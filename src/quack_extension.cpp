@@ -1,6 +1,10 @@
 #define DUCKDB_EXTENSION_MAIN
 
+#include <vector>
+#include <string>
+
 #include "quack_extension.hpp"
+#include "https.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -16,7 +20,12 @@ inline void QuackScalarFun(DataChunk &args, ExpressionState &state, Vector &resu
     UnaryExecutor::Execute<string_t, string_t>(
 	    name_vector, result, args.size(),
 	    [&](string_t name) { 
-			return StringVector::AddString(result, "Quack "+name.GetString()+" 🐥");;
+        Https https;
+        std::string question = name.GetString();
+        std::vector<std::string> headers;
+        std::string response = https.Get("openssl.org", "/", headers);
+
+        return StringVector::AddString(result, "Quack " + response + " 🐥");;
         });
 }
 

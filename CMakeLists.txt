@@ -5,10 +5,24 @@ set(TARGET_NAME quack)
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 project(${TARGET_NAME})
-include_directories(src/include)
 
-set(EXTENSION_SOURCES src/quack_extension.cpp)
+set(OPENSSL_USE_STATIC_LIBS TRUE)
+set(OPENSSL_ROOT_DIR /opt/homebrew/opt/openssl@3)
+find_package(OpenSSL REQUIRED)
+message("OpenSSL path: '${OPENSSL_SSL_LIBRARY}'")
+message("OpenSSL crypto path: '${OPENSSL_CRYPTO_LIBRARY}'")
+
+include_directories(src/include)
+include_directories(${OPENSSL_INCLUDE_DIR})
+include_directories(duckdb/extension/yyjson/include)
+
+add_subdirectory(duckdb/extension/json/yyjson)
+
+set(EXTENSION_SOURCES src/quack_extension.cpp src/https.cpp)
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
+target_link_libraries(${EXTENSION_NAME}
+                      ${OPENSSL_LIBRARIES}
+                      )
 
 set(PARAMETERS "-warnings")
 build_loadable_extension(${TARGET_NAME} ${PARAMETERS} ${EXTENSION_SOURCES})
