@@ -14,11 +14,10 @@ message("OpenSSL crypto path: '${OPENSSL_CRYPTO_LIBRARY}'")
 
 include_directories(src/include)
 include_directories(${OPENSSL_INCLUDE_DIR})
-include_directories(duckdb/extension/yyjson/include)
+include_directories(duckdb/third_party/httplib)
 
-add_subdirectory(duckdb/extension/json/yyjson)
 
-set(EXTENSION_SOURCES src/quack_extension.cpp src/https.cpp)
+set(EXTENSION_SOURCES src/quack_extension.cpp src/https.cpp src/chat.cpp)
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 target_link_libraries(${EXTENSION_NAME}
                       ${OPENSSL_LIBRARIES}
