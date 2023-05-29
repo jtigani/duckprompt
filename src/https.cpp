@@ -6,28 +6,45 @@
 #include "https.hpp"
 
 
+// Set PROMPT_DEBUG = 1 to see request bodies / responses
+// Set PROMPT_DEBUG = 2 to see headers as well.
+int GetDebugLevel() {
+    char * debug_env = std::getenv("PROMPT_DEBUG");
+    if (debug_env == nullptr || strlen(debug_env) == 0) {return 0;}
+    int level = debug_env[0] - '0';
+    if (level < 0 || level > 9) {return 0;}
+    return level;
+}
+
 static void logger(const duckdb_httplib_openssl::Request& request, const duckdb_httplib_openssl::Response& response) {
+    int debug_level = GetDebugLevel();
+    if (debug_level <= 0) {
+        return;
+    }
+
     std::cerr << "Remote Addr: " << request.remote_addr << " Port:" << request.remote_port << "\n";
     std::cerr << "Request:" << request.method << " " << request.path << "\n";
-    for (auto header : request.headers) {
-        if (header.first == "Authorization") {
-            std::cerr << "  " << header.first << ": " << "[Redacted]\n";
-        } else {
-            std::cerr << "  " << header.first << ": " << header.second << "\n";
+
+    if (debug_level > 1) {
+        for (auto header : request.headers) {
+            if (header.first == "Authorization") {
+                std::cerr << "  " << header.first << ": " << "[Redacted]\n";
+            } else {
+                std::cerr << "  " << header.first << ": " << header.second << "\n";
+            }
         }
     }
+
     std::cerr << "   Body:\n    " << request.body;  
-    std::cerr << "\n\nResponse. Code: " << response.status << "Location: " << response.location;
-    for (auto header : response.headers) {
-        std::cerr << "  " << header.first << ": " << header.second << "\n";
+    std::cerr << "\n\nResponse Code: " << response.status << "\n";
+    if (debug_level > 1) {
+        for (auto header : response.headers) {
+            std::cerr << "  " << header.first << ": " << header.second << "\n";
+        }
     }
     std::cerr << "   Body:\n    " << response.body;  
 }
 
-bool GetDebugMode() {
-    char * debug_env = std::getenv("PROMPT_DEBUG");
-    return debug_env != nullptr && strlen(debug_env) > 0;
-}
 
 duckdb_httplib_openssl::SSLClient* GetClient(std::string host_port) {
     duckdb_httplib_openssl::SSLClient* client = new duckdb_httplib_openssl::SSLClient(host_port.c_str(), 443);
@@ -35,9 +52,7 @@ duckdb_httplib_openssl::SSLClient* GetClient(std::string host_port) {
     client->set_keep_alive(true);
     client->enable_server_certificate_verification(false);
     client->set_decompress(false);
-    if (GetDebugMode()) {
-        client->set_logger(logger);
-    }
+    client->set_logger(logger);
     client->set_read_timeout(300); // seconds
     client->set_write_timeout(300); // seconds
     client->set_connection_timeout(300); // seconds
