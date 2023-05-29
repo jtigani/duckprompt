@@ -16,6 +16,8 @@ class ChatContext {
         }
         return *this;
     }
+
+    std::string GenerateMessage();
     std::string role;
     std::string content;
 };
@@ -31,10 +33,12 @@ public:
 
 private:
     std::string GenerateMessages();
-    
+    std::string GenerateRequest();
+
 private:
     static const char* c_open_ai_host;
     static const char* c_chat_uri;
+    static const char* c_model;
 
     std::vector<ChatContext> context_;
 };

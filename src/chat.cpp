@@ -8,6 +8,7 @@
 
 const char* Chat::c_open_ai_host = "api.openai.com";
 const char* Chat::c_chat_uri = "v1/chat/completions";
+const char* Chat::c_model = "gpt-3.5-turbo";
 
 Chat::Chat(std::string initial_context) {
     Reset(initial_context);
@@ -33,7 +34,7 @@ void Chat::Reset(std::string initial_context) {
 }
 
 std::string JsonEncode(std::string unencoded) {
-    
+    return unencoded;
 }
 
 std::string GenerateMessage(ChatContext context) {
@@ -113,7 +114,49 @@ std::string Chat::GenerateMessages() {
         messages.push_back(GenerateMessage(single_context));
     }
     return "[" + join(messages, ',') + "]";
+}
 
+/// return "{\"model\": \"gpt-3.5-turbo\", \"messages\":" + GenerateMessages() + "}";
+/*
+{"model": "gpt-3.5-turbo", 
+    "messages":[{"role": "system", "content":"Prompt goes here"}]}
+*/
+std::string Chat::GenerateRequest() {
+    // Create a mutable doc
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_val *root = yyjson_mut_obj(doc);
+    yyjson_mut_doc_set_root(doc, root);
+
+    yyjson_mut_obj_add_str(doc, root, "model", c_model);
+
+    yyjson_mut_val* message_arr = yyjson_mut_arr(doc);
+
+
+    // Create objects and add them to the array
+    
+    for (auto single_context : context_) {
+        yyjson_mut_val *obj = yyjson_mut_obj(doc);
+        yyjson_mut_obj_add_strcpy(doc, obj, "role", single_context.role.c_str());
+        yyjson_mut_obj_add_strcpy(doc, obj, "content", single_context.content.c_str());
+        yyjson_mut_arr_append(message_arr, obj);
+    }
+
+    // Add the array to the root object
+    yyjson_mut_obj_add(root, yyjson_mut_str(doc, "messages"), message_arr);
+
+    // To string, minified
+    const char *json = yyjson_mut_write(doc, 0, NULL);
+    std::string result;
+    if (json) {
+        result = std::string(json);
+        free((void *)json);
+    } else {
+        std::cerr << "Invalid json generated";
+    }
+
+    // Free the doc
+    yyjson_mut_doc_free(doc);
+    return result;
 }
 
 std::string Chat::SendPrompt(std::string prompt) {
@@ -128,15 +171,9 @@ std::string Chat::SendPrompt(std::string prompt) {
 
     }
 
-    std::string whole_prompt = "Output a single SQL query without any explanation and do "
-        "not add anything to the query that was not part of the question. "
-        "Make sure to only use tables and columns from the schema above and write a query "
-        "to answer the following question: '" 
-        + prompt 
-        + "'";
-    context_.push_back(ChatContext("user", whole_prompt));
-    std::string body = 
-        "{\"model\": \"gpt-3.5-turbo\", \"messages\":" + GenerateMessages() + "}";
+
+    context_.push_back(ChatContext("user", prompt));
+    std::string body = GenerateRequest(); 
     
     HTTPSResponse response = https.Post(c_chat_uri, headers, body);
     return (response.code == 200) ? ParseResponse(response.response) : "";
