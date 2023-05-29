@@ -9,47 +9,104 @@
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/scalar_function.hpp"
-
-
-#include <duckdb/parser/parsed_data/create_scalar_function_info.hpp>
+#include "duckdb/function/table_function.hpp"
+#include "duckdb/parser/parsed_data/create_view_info.hpp"
+#include "duckdb/parser/parser.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/function/function_binder.hpp"
+#include "duckdb/parser/statement/select_statement.hpp"
+#include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 
 namespace duckdb {
 
+struct QuackingDuckBindData : public FunctionData {
+    QuackingDuckBindData()  {
+    }
+
+    QuackingDuckBindData(const QuackingDuckBindData &other) {
+        throw NotImplementedException("FIXME: serialize");
+    }
+
+    bool Equals(const FunctionData &other_p) const override {
+        auto &other = (QuackingDuckBindData &)other_p;
+        return true;
+    }
+    unique_ptr<FunctionData> Copy() const override {
+        return make_unique<QuackingDuckBindData>(*this);
+    }
+
+    static void Serialize(FieldWriter &writer, const FunctionData *bind_data_p, const ScalarFunction &function) {
+        throw NotImplementedException("FIXME: serialize");
+    }
+
+    static unique_ptr<FunctionData> Deserialize(ClientContext &context, FieldReader &reader,
+                                                ScalarFunction &bound_function) {
+        throw NotImplementedException("FIXME: serialize");
+    }
+
+    QuackingDuck quacking_duck;
+};
+
 inline void SummarizeSchemaScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-    auto &name_vector = args.data[0];
+	auto &name_vector = args.data[0];
+    
+    auto &func_expr = (BoundFunctionExpression &)state.expr;
+    auto &info = (QuackingDuckBindData &)*func_expr.bind_info;
     UnaryExecutor::Execute<string_t, string_t>(
 	    name_vector, result, args.size(),
 	    [&](string_t name) { 
-            QuackingDuck quacking_duck;
-            std::string response = quacking_duck.ExplainSchema();
-            return StringVector::AddString(result, "Schema " + response + " 🐥");;
-        });
-}
-inline void PromptScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-    auto &name_vector = args.data[0];
-    UnaryExecutor::Execute<string_t, string_t>(
-	    name_vector, result, args.size(),
-	    [&](string_t name) { 
-            QuackingDuck quacking_duck;
-            std::string response = quacking_duck.Ask(name.GetString());
+            std::string response = info.quacking_duck.ExplainSchema();
             return StringVector::AddString(result, response);;
         });
 }
 
-static void LoadInternal(DatabaseInstance &instance) {
-	Connection con(instance);
-    con.BeginTransaction();
 
-    auto &catalog = Catalog::GetSystemCatalog(*con.context);
 
-    CreateScalarFunctionInfo summarize_schema_fun_info(
-            ScalarFunction("summarize_schema", {LogicalType::VARCHAR}, LogicalType::VARCHAR, SummarizeSchemaScalarFun));
-    CreateScalarFunctionInfo prompt_fun_info(
-            ScalarFunction("prompt", {LogicalType::VARCHAR}, LogicalType::VARCHAR, PromptScalarFun));
-    prompt_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-    summarize_schema_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-    catalog.CreateFunction(*con.context, &prompt_fun_info);
-    catalog.CreateFunction(*con.context, &summarize_schema_fun_info);
+unique_ptr<FunctionData> SummarizeSchemaBind(ClientContext &context, ScalarFunction &bound_function,
+    vector<unique_ptr<Expression> > &arguments) {
+    auto bind_data =  make_unique<QuackingDuckBindData>();
+    
+    auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
+    auto schema = catalog.GetSchema(context); // Get the default schema.
+    bind_data->quacking_duck.StoreSchema(*schema);
+    return bind_data;
+}
+
+unique_ptr<FunctionData> PromptBind(ClientContext &context, ScalarFunction &bound_function,
+    vector<unique_ptr<Expression> > &arguments) {
+    auto bind_data = make_unique<QuackingDuckBindData>();
+    auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
+    auto schema = catalog.GetSchema(context); // Get the default schema.
+    bind_data->quacking_duck.StoreSchema(*schema);
+    return bind_data;
+}
+
+inline void PromptScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
+    auto &name_vector = args.data[0];
+    auto &func_expr = (BoundFunctionExpression &)state.expr;
+    auto &info = (QuackingDuckBindData &)*func_expr.bind_info;
+    UnaryExecutor::Execute<string_t, string_t>(
+	    name_vector, result, args.size(),
+	    [&](string_t name) { 
+            std::string response = info.quacking_duck.Ask(name.GetString());
+            return StringVector::AddString(result, response);;
+        });
+}
+
+ void LoadInternal(DatabaseInstance &instance) {
+    Connection con(instance);
+	con.BeginTransaction();
+	auto &catalog = Catalog::GetSystemCatalog(*con.context);
+
+    auto summarize_func = ScalarFunction("summarize_schema", {LogicalType::VARCHAR}, LogicalType::VARCHAR,
+        SummarizeSchemaScalarFun, SummarizeSchemaBind);
+    CreateScalarFunctionInfo summarize_info(summarize_func);
+	catalog.CreateFunction(*con.context, &summarize_info);
+
+    auto prompt_func = ScalarFunction("prompt", {LogicalType::VARCHAR}, LogicalType::VARCHAR, PromptScalarFun,
+        PromptBind);
+    CreateScalarFunctionInfo prompt_info(prompt_func);
+    catalog.CreateFunction(*con.context, &prompt_info);
     con.Commit();
 }
 
@@ -57,7 +114,7 @@ void QuackExtension::Load(DuckDB &db) {
 	LoadInternal(*db.instance);
 }
 std::string QuackExtension::Name() {
-	return "quack";
+	return "duckprompt";
 }
 
 } // namespace duckdb

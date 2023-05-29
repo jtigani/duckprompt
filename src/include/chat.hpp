@@ -29,6 +29,8 @@ public:
 
     void Reset(std::string context);
 
+    void SetSystemContext(std::string  context);
+
     std::string SendPrompt(std::string prompt);
 
 private:

@@ -30,7 +30,16 @@ void Chat::Reset(std::string initial_context) {
     if (initial_context.length() > 0) {
         context_.push_back(ChatContext("system", initial_context));
     }
+}
 
+void Chat::SetSystemContext(std::string system_context) {
+    for (ChatContext& current : context_) {
+        if (current.role == "system") {
+            current.content = system_context;
+            return;
+        }
+    }
+    context_.push_back(ChatContext("system", system_context));
 }
 
 std::string JsonEncode(std::string unencoded) {
@@ -73,7 +82,6 @@ std::string ParseResponse(std::string response) {
     yyjson_doc *doc = yyjson_read(response.c_str(), response.length(), 0);
     std::string content;
     do {
-        std::cerr << "parsed the response doc";
         yyjson_val *root_json = yyjson_doc_get_root(doc);
         if (root_json == nullptr) {
             std::cerr << "Unable to read the root of the response";
@@ -116,8 +124,8 @@ std::string Chat::GenerateMessages() {
     return "[" + join(messages, ',') + "]";
 }
 
-/// return "{\"model\": \"gpt-3.5-turbo\", \"messages\":" + GenerateMessages() + "}";
 /*
+Example:
 {"model": "gpt-3.5-turbo", 
     "messages":[{"role": "system", "content":"Prompt goes here"}]}
 */
@@ -170,7 +178,6 @@ std::string Chat::SendPrompt(std::string prompt) {
         std::cerr << "Missing authorization key for OpenAI";
 
     }
-
 
     context_.push_back(ChatContext("user", prompt));
     std::string body = GenerateRequest(); 

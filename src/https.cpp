@@ -30,7 +30,8 @@ duckdb_httplib_openssl::SSLClient* GetClient(std::string host_port) {
     client->set_keep_alive(true);
     client->enable_server_certificate_verification(false);
     client->set_decompress(false);
-    client->set_logger(logger);
+    // Add this in to log requests and responses.
+    // client->set_logger(logger);
     client->set_read_timeout(300); // seconds
     client->set_write_timeout(300); // seconds
     client->set_connection_timeout(300); // seconds

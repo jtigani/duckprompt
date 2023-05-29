@@ -11,8 +11,6 @@ public:
 	void Load(DuckDB &db) override;
 	std::string Name() override;
 
-private:
-    QuackingDuck quacking_duck;
 };
 
 } // namespace duckdb
