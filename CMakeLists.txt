@@ -16,8 +16,11 @@ include_directories(src/include)
 include_directories(${OPENSSL_INCLUDE_DIR})
 include_directories(duckdb/third_party/httplib)
 
+include_directories(duckdb/extension/json/yyjson/include)
+add_subdirectory(duckdb/extension/json/yyjson)
 
-set(EXTENSION_SOURCES src/quack_extension.cpp src/https.cpp src/chat.cpp)
+
+set(EXTENSION_SOURCES src/quack_extension.cpp src/https.cpp src/chat.cpp src/quacking_duck.cpp)
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 target_link_libraries(${EXTENSION_NAME}
                       ${OPENSSL_LIBRARIES}

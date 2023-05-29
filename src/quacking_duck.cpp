@@ -2,38 +2,21 @@
 #include <vector>
 #include <string>
 
-class QuackingDuck {
-private:
-    // Suppose "Connection" is a corresponding C++ type for the connection
-    Connection conn;
-    std::string schemas;
+#include "quacking_duck.hpp"
+#include "chat.hpp"
+#include "yyjson.hpp"
 
-    std::string _get_schemas() {
-        // The implementation of this method depends on the C++ library you're using for database management.
-    }
+QuackingDuck::QuackingDuck() : chat_("") {}
 
-    void explain_content(std::string detail = "one sentence") {
-        std::cout << _schema_summary_internal(detail)[1] << std::endl;
-    }
+std::string QuackingDuck::Ask(std::string question) {
+    chat_.Reset("You are a helpful assistant that can generate Postgresql code based on the user input. You do not respond with any human readable text, only SQL code.");    
+    std::string json_result = chat_.SendPrompt(question);
 
-    std::vector<std::string> _schema_summary_internal(std::string detail = "one sentence") {
-        // The implementation of this method depends on the C++ library you're using for AI model interaction.
-    }
+    return json_result;
+}
 
-    std::vector<std::string> _generate_sql(std::string question, bool debug = false) {
-        // The implementation of this method depends on the C++ library you're using for AI model interaction.
-    }
+std::string QuackingDuck::ExplainSchema(std::string detail) {
+    chat_.Reset("You are a helpful assistant that can generate an human redable summary of database content based on the schema.");
+    return chat_.SendPrompt("Get Schema");
+}
 
-    std::string _regenerate_sql(std::string content_prompt, std::string content_summary, std::string sql_prompt, std::string sql_query, std::string error, bool debug = false) {
-        // The implementation of this method depends on the C++ library you're using for AI model interaction.
-    }
-
-public:
-    QuackingDuck(Connection conn): conn(conn) {
-        this->schemas = this->_get_schemas();
-    }
-
-    void ask(std::string question, bool debug = false) {
-        // The implementation of this method depends on the C++ library you're using for database management and AI model interaction.
-    }
-};

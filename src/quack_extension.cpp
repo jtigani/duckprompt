@@ -15,14 +15,24 @@
 
 namespace duckdb {
 
-inline void QuackScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
+inline void SummarizeSchemaScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
     auto &name_vector = args.data[0];
     UnaryExecutor::Execute<string_t, string_t>(
 	    name_vector, result, args.size(),
 	    [&](string_t name) { 
-            Chat chat("");    
-            std::string response = chat.SendPrompt(name.GetString());
-            return StringVector::AddString(result, "Quack " + response + " 🐥");;
+            QuackingDuck quacking_duck;
+            std::string response = quacking_duck.ExplainSchema();
+            return StringVector::AddString(result, "Schema " + response + " 🐥");;
+        });
+}
+inline void PromptScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
+    auto &name_vector = args.data[0];
+    UnaryExecutor::Execute<string_t, string_t>(
+	    name_vector, result, args.size(),
+	    [&](string_t name) { 
+            QuackingDuck quacking_duck;
+            std::string response = quacking_duck.Ask(name.GetString());
+            return StringVector::AddString(result, "Reply " + response + " 🐥");;
         });
 }
 
@@ -32,10 +42,14 @@ static void LoadInternal(DatabaseInstance &instance) {
 
     auto &catalog = Catalog::GetSystemCatalog(*con.context);
 
-    CreateScalarFunctionInfo quack_fun_info(
-            ScalarFunction("quack", {LogicalType::VARCHAR}, LogicalType::VARCHAR, QuackScalarFun));
-    quack_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
-    catalog.CreateFunction(*con.context, &quack_fun_info);
+    CreateScalarFunctionInfo summarize_schema_fun_info(
+            ScalarFunction("summarize_schema", {LogicalType::VARCHAR}, LogicalType::VARCHAR, SummarizeSchemaScalarFun));
+    CreateScalarFunctionInfo prompt_fun_info(
+            ScalarFunction("prompt", {LogicalType::VARCHAR}, LogicalType::VARCHAR, PromptScalarFun));
+    prompt_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
+    summarize_schema_fun_info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
+    catalog.CreateFunction(*con.context, &prompt_fun_info);
+    catalog.CreateFunction(*con.context, &summarize_schema_fun_info);
     con.Commit();
 }
 

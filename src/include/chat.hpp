@@ -25,8 +25,13 @@ public:
     Chat(std::string context);
     ~Chat();
 
+    void Reset(std::string context);
+
     std::string SendPrompt(std::string prompt);
 
+private:
+    std::string GenerateMessages();
+    
 private:
     static const char* c_open_ai_host;
     static const char* c_chat_uri;
