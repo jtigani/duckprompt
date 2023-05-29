@@ -32,7 +32,7 @@ inline void PromptScalarFun(DataChunk &args, ExpressionState &state, Vector &res
 	    [&](string_t name) { 
             QuackingDuck quacking_duck;
             std::string response = quacking_duck.Ask(name.GetString());
-            return StringVector::AddString(result, "Reply " + response + " 🐥");;
+            return StringVector::AddString(result, response);;
         });
 }
 

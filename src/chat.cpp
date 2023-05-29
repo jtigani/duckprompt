@@ -4,6 +4,8 @@
 #include "chat.hpp"
 #include "https.hpp"
 
+#include "yyjson.hpp"
+
 const char* Chat::c_open_ai_host = "api.openai.com";
 const char* Chat::c_chat_uri = "v1/chat/completions";
 
@@ -29,12 +31,17 @@ void Chat::Reset(std::string initial_context) {
     }
 
 }
+
+std::string JsonEncode(std::string unencoded) {
+    
+}
+
 std::string GenerateMessage(ChatContext context) {
     std::string msg;
     msg.append("{\"role\": \"");
     msg.append(context.role);
     msg.append("\", \"content\":\"");
-    msg.append(context.content);
+    msg.append(JsonEncode(context.content));
     msg.append("\"}");
     return msg;
 }
@@ -48,6 +55,54 @@ std::string join(const std::vector<std::string>& v, char c) {
         s += c;
    }
    return s;
+}
+
+/* Exmaple
+{"id":"chatcmpl-7LLgyWTjgbnz6d46npSn2iehhvLDg",
+ "object":"chat.completion","created":1685322628,
+ "model":"gpt-3.5-turbo-0301","usage":{"prompt_tokens":103,"completion_tokens":94,"total_tokens":197},
+ "choices":[{"message":{"role":"assistant",
+    "content":"SELECT \n  sum(l_extendedprice * (1 - l_discount)) as revenue \nFROM \n  lineitem \nWHERE \n
+          l_shipdate >= date '1994-01-01'\n  AND l_shipdate < date '1994-01-01' + interval '1' year \n 
+          AND l_discount between 0.06 - 0.01 AND 0.06 + 0.01 \n  AND l_quantity < 24;"},
+    "finish_reason":"stop","index":0}]}
+*/
+
+std::string ParseResponse(std::string response) {
+    yyjson_doc *doc = yyjson_read(response.c_str(), response.length(), 0);
+    std::string content;
+    do {
+        std::cerr << "parsed the response doc";
+        yyjson_val *root_json = yyjson_doc_get_root(doc);
+        if (root_json == nullptr) {
+            std::cerr << "Unable to read the root of the response";
+            break;
+        }
+        yyjson_val *choices_json = yyjson_obj_get(root_json, "choices");
+        if (choices_json == nullptr) {
+            std::cerr << "Unable to choices object from the root";
+            break;
+        }
+        size_t idx, max;
+        yyjson_val *choice_json;
+        
+        yyjson_arr_foreach(choices_json, idx, max, choice_json) {
+            yyjson_val* message_json = yyjson_obj_get(choice_json, "message");
+            if (message_json == nullptr) {
+                std::cerr << "Unable to read the message object from the choice";
+                break;
+            }
+            yyjson_val* content_json = yyjson_obj_get(message_json, "content");
+            if (message_json == nullptr) {
+                std::cerr << "Unable to read the content object from the message";
+                break;
+            }
+            content = yyjson_get_str(content_json); 
+            break;
+        }
+    } while(false);
+    yyjson_doc_free(doc);
+    return content;
 }
 
 std::string Chat::GenerateMessages() {
@@ -84,9 +139,5 @@ std::string Chat::SendPrompt(std::string prompt) {
         "{\"model\": \"gpt-3.5-turbo\", \"messages\":" + GenerateMessages() + "}";
     
     HTTPSResponse response = https.Post(c_chat_uri, headers, body);
-    if (response.code == 200) {
-        // TODO: Parse the JSON of the result and add it to the context.
-    }
-    return response.response;  
+    return (response.code == 200) ? ParseResponse(response.response) : "";
 }
-

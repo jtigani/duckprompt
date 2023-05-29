@@ -10,9 +10,7 @@ QuackingDuck::QuackingDuck() : chat_("") {}
 
 std::string QuackingDuck::Ask(std::string question) {
     chat_.Reset("You are a helpful assistant that can generate Postgresql code based on the user input. You do not respond with any human readable text, only SQL code.");    
-    std::string json_result = chat_.SendPrompt(question);
-
-    return json_result;
+    return chat_.SendPrompt(question);
 }
 
 std::string QuackingDuck::ExplainSchema(std::string detail) {
