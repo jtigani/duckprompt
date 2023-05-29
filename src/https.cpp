@@ -64,7 +64,7 @@ HTTPSResponse HTTPS::Post(
     auto res = client_->Post(uri.c_str(), headers, body.c_str(), body.size(), "application/json");
 
     if (res != nullptr) {
-        std::cerr << "Post response. Code: " << res->status << "\n" << res->body;
+        // std::cerr << "Post response. Code: " << res->status << "\n" << res->body;
         return HTTPSResponse(res->status, res->body);
     } else {
         std::cerr << "Post returned null";

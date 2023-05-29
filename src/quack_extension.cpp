@@ -8,14 +8,15 @@
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
+#include "duckdb/function/function_binder.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include "duckdb/function/table_function.hpp"
+#include "duckdb/parser/parsed_data/create_pragma_function_info.hpp"
+#include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_view_info.hpp"
 #include "duckdb/parser/parser.hpp"
-#include "duckdb/planner/expression/bound_function_expression.hpp"
-#include "duckdb/function/function_binder.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
-#include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
 
 namespace duckdb {
 
@@ -93,10 +94,27 @@ inline void PromptScalarFun(DataChunk &args, ExpressionState &state, Vector &res
         });
 }
 
+static string PragmaPromptQuery(ClientContext &context, const FunctionParameters &parameters) {
+	auto prompt = StringValue::Get(parameters.values[0]);
+
+    auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
+    auto schema = catalog.GetSchema(context); // Get the default schema.
+    QuackingDuck quacking_duck;
+    quacking_duck.StoreSchema(*schema);
+    return quacking_duck.Ask(prompt);
+}
+
+
  void LoadInternal(DatabaseInstance &instance) {
     Connection con(instance);
 	con.BeginTransaction();
 	auto &catalog = Catalog::GetSystemCatalog(*con.context);
+
+    // create the TPCH pragma that allows us to run the query
+	auto prompt_query_func = PragmaFunction::PragmaCall("prompt_query", PragmaPromptQuery, {LogicalType::VARCHAR});
+	CreatePragmaFunctionInfo info(prompt_query_func);
+	catalog.CreatePragmaFunction(*con.context, &info);
+
 
     auto summarize_func = ScalarFunction("summarize_schema", {LogicalType::VARCHAR}, LogicalType::VARCHAR,
         SummarizeSchemaScalarFun, SummarizeSchemaBind);
