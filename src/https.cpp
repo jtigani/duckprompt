@@ -24,14 +24,20 @@ static void logger(const duckdb_httplib_openssl::Request& request, const duckdb_
     std::cerr << "   Body:\n    " << response.body;  
 }
 
+bool GetDebugMode() {
+    char * debug_env = std::getenv("PROMPT_DEBUG");
+    return debug_env != nullptr && strlen(debug_env) > 0;
+}
+
 duckdb_httplib_openssl::SSLClient* GetClient(std::string host_port) {
     duckdb_httplib_openssl::SSLClient* client = new duckdb_httplib_openssl::SSLClient(host_port.c_str(), 443);
     client->set_follow_location(true);
     client->set_keep_alive(true);
     client->enable_server_certificate_verification(false);
     client->set_decompress(false);
-    // Add this in to log requests and responses.
-    // client->set_logger(logger);
+    if (GetDebugMode()) {
+        client->set_logger(logger);
+    }
     client->set_read_timeout(300); // seconds
     client->set_write_timeout(300); // seconds
     client->set_connection_timeout(300); // seconds
@@ -64,7 +70,6 @@ HTTPSResponse HTTPS::Post(
     auto res = client_->Post(uri.c_str(), headers, body.c_str(), body.size(), "application/json");
 
     if (res != nullptr) {
-        // std::cerr << "Post response. Code: " << res->status << "\n" << res->body;
         return HTTPSResponse(res->status, res->body);
     } else {
         std::cerr << "Post returned null";
