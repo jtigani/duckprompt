@@ -71,6 +71,24 @@ std::string QuackingDuck::AnalyzeQuery(std::string query) {
     return result;
 }
 
+std::string ExtractSelect(std::string message) {
+    size_t pos = message.find(" SELECT");
+    if (pos == std::string::npos ) {
+        pos = message.find("\nSELECT");
+    }
+
+    std::string result = (pos == std::string::npos) 
+        ? message
+        : message.substr(pos + 1); // go beyond the ' '.
+
+    pos = result.find(";\n");
+    result = (pos == std::string::npos)
+        ? result
+        : result.substr(0, pos);
+
+    return result; 
+}
+
 std::string QuackingDuck::FixupQuery(std::string error_message) {
     if (query_.length() == 0) {
         // Should have called Ask or AnalyzeQuery to set the query.
@@ -80,9 +98,12 @@ std::string QuackingDuck::FixupQuery(std::string error_message) {
     chat_.SetSystemContext("You are a helpful assistant that can generate Postgresql code based on "
         "the user input. You do not respond with any human readable text, only SQL code.");    
 
-    std::string whole_prompt = "I got the following exception:\n"
+    std::string whole_prompt = "When I ran the previous query, I got the following exception:\n"
         + error_message
-        + "\nPlease correct the query and print only the corrected SQL code, without an apology.";
-    query_ = chat_.SendPrompt(whole_prompt);
+        + "\nPlease correct and output only the resulting SQL code.";
+    
+    std::string response = chat_.SendPrompt(whole_prompt);
+    // This is a hack .... if the select statement is at the end, return it.
+    query_ = ExtractSelect(response);
     return query_;
 }
