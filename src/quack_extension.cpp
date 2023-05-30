@@ -13,6 +13,7 @@
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/parsed_data/create_pragma_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
+#include "duckdb/parser/parsed_data/create_table_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_view_info.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
@@ -20,87 +21,47 @@
 
 namespace duckdb {
 
-struct QuackingDuckBindData : public FunctionData {
-    QuackingDuckBindData()  {
-    }
+struct PromptFunctionData : public TableFunctionData {
+	PromptFunctionData() {
+	}
 
-    QuackingDuckBindData(const QuackingDuckBindData &other) {
-        throw NotImplementedException("FIXME: serialize");
-    }
-
-    bool Equals(const FunctionData &other_p) const override {
-        auto &other = (QuackingDuckBindData &)other_p;
-        return true;
-    }
-    unique_ptr<FunctionData> Copy() const override {
-        return make_unique<QuackingDuckBindData>(*this);
-    }
-
-    static void Serialize(FieldWriter &writer, const FunctionData *bind_data_p, const ScalarFunction &function) {
-        throw NotImplementedException("FIXME: serialize");
-    }
-
-    static unique_ptr<FunctionData> Deserialize(ClientContext &context, FieldReader &reader,
-                                                ScalarFunction &bound_function) {
-        throw NotImplementedException("FIXME: serialize");
-    }
-
-    QuackingDuck quacking_duck;
+    std::string prompt;
+	bool finished = false;
 };
 
-inline void SummarizeSchemaScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-	auto &name_vector = args.data[0];
-    
-    auto &func_expr = (BoundFunctionExpression &)state.expr;
-    auto &info = (QuackingDuckBindData &)*func_expr.bind_info;
-    UnaryExecutor::Execute<string_t, string_t>(
-	    name_vector, result, args.size(),
-	    [&](string_t name) { 
-            std::string response = info.quacking_duck.ExplainSchema();
-            return StringVector::AddString(result, response);;
-        });
-}
+static void SummarizeSchemaFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+	auto &data = (PromptFunctionData &)*data_p.bind_data;
+	if (data.finished) {
+		return;
+	}
+	data.finished = true;
 
-
-unique_ptr<FunctionData> SummarizeSchemaBind(ClientContext &context, ScalarFunction &bound_function,
-    vector<unique_ptr<Expression> > &arguments) {
-    auto bind_data =  make_unique<QuackingDuckBindData>();
-    
+    QuackingDuck quacking_duck;
     auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
     auto schema = catalog.GetSchema(context); // Get the default schema.
-    bind_data->quacking_duck.StoreSchema(*schema);
-    return bind_data;
+    quacking_duck.StoreSchema(*schema);
+
+    std::string response = quacking_duck.ExplainSchema();
+    output.SetCardinality(1);
+    output.SetValue(0, 0, Value(response));
 }
 
-unique_ptr<FunctionData> PromptBind(ClientContext &context, ScalarFunction &bound_function,
-    vector<unique_ptr<Expression> > &arguments) {
-    auto bind_data = make_unique<QuackingDuckBindData>();
+static void PromptSqlFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+	auto &data = (PromptFunctionData &)*data_p.bind_data;
+	if (data.finished) {
+		return;
+	}
+	data.finished = true;
+
+    QuackingDuck quacking_duck;
     auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
     auto schema = catalog.GetSchema(context); // Get the default schema.
-    bind_data->quacking_duck.StoreSchema(*schema);
-    return bind_data;
+    quacking_duck.StoreSchema(*schema);
+    std::string response = quacking_duck.Ask(data.prompt);
+    output.SetCardinality(1);
+    output.SetValue(0, 0, Value(response));
 }
 
-inline void PromptScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-    auto &name_vector = args.data[0];
-    auto &func_expr = (BoundFunctionExpression &)state.expr;
-    auto &info = (QuackingDuckBindData &)*func_expr.bind_info;
-    UnaryExecutor::Execute<string_t, string_t>(
-	    name_vector, result, args.size(),
-	    [&](string_t name) { 
-            std::string response = info.quacking_duck.Ask(name.GetString());
-            return StringVector::AddString(result, response);;
-        });
-}
-
-unique_ptr<FunctionData> FixupBind(ClientContext &context, ScalarFunction &bound_function,
-    vector<unique_ptr<Expression> > &arguments) {
-    auto bind_data = make_unique<QuackingDuckBindData>();
-    auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
-    auto schema = catalog.GetSchema(context); // Get the default schema.
-    bind_data->quacking_duck.StoreSchema(*schema);
-    return bind_data;
-}
 // Validates a query and returns an error message if the query fails.
 std::string ValidateQuery(std::string query, duckdb::Parser& parser, duckdb::Binder& binder) {
     std::string error_message;
@@ -142,17 +103,39 @@ std::string ValidateAndFixup(ClientContext &context, QuackingDuck quacking_duck,
     }
 }
 
-inline void FixupScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
-    auto &name_vector = args.data[0];
-    auto &func_expr = (BoundFunctionExpression &)state.expr;
-    auto &info = (QuackingDuckBindData &)*func_expr.bind_info;
-    UnaryExecutor::Execute<string_t, string_t>(
-	    name_vector, result, args.size(),
-	    [&](string_t name) { 
-            std::string response = ValidateAndFixup(state.GetContext(), 
-                info.quacking_duck, name.GetString());
-            return StringVector::AddString(result, response);;
-        });
+static unique_ptr<FunctionData> SummarizeBind(ClientContext &context, TableFunctionBindInput &input,
+                                          vector<LogicalType> &return_types, vector<string> &names) {
+	auto result = make_unique<PromptFunctionData>();
+	return_types.emplace_back(LogicalType::VARCHAR);
+	names.emplace_back("summary");
+	return std::move(result);
+}
+
+static unique_ptr<FunctionData> PromptBind(ClientContext &context, TableFunctionBindInput &input,
+                                          vector<LogicalType> &return_types, vector<string> &names) {
+	auto result = make_unique<PromptFunctionData>();
+    if (input.inputs.size() > 0) {
+      result->prompt = input.inputs[0].template GetValue<std::string>();
+    }
+	return_types.emplace_back(LogicalType::VARCHAR);
+	names.emplace_back("query");
+	return std::move(result);
+}
+
+static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
+	auto &data = (PromptFunctionData &)*data_p.bind_data;
+	if (data.finished) {
+		return;
+	}
+	data.finished = true;
+
+    QuackingDuck quacking_duck;
+    auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
+    auto schema = catalog.GetSchema(context); // Get the default schema.
+    quacking_duck.StoreSchema(*schema);
+    std::string response = ValidateAndFixup(context, quacking_duck, data.prompt);
+    output.SetCardinality(1);
+    output.SetValue(0, 0, Value(response));
 }
 
 static string PragmaPromptQuery(ClientContext &context, const FunctionParameters &parameters) {
@@ -175,21 +158,18 @@ static string PragmaPromptQuery(ClientContext &context, const FunctionParameters
 	CreatePragmaFunctionInfo info(prompt_query_func);
 	catalog.CreatePragmaFunction(*con.context, &info);
 
+    TableFunction summarize_func("prompt_schema", {},
+        SummarizeSchemaFunction, SummarizeBind);
+    CreateTableFunctionInfo summarize_info(summarize_func);
+	catalog.CreateTableFunction(*con.context, &summarize_info);
 
-    auto summarize_func = ScalarFunction("prompt_schema", {LogicalType::VARCHAR}, LogicalType::VARCHAR,
-        SummarizeSchemaScalarFun, SummarizeSchemaBind);
-    CreateScalarFunctionInfo summarize_info(summarize_func);
-	catalog.CreateFunction(*con.context, &summarize_info);
+    TableFunction prompt_func("prompt_sql", {LogicalType::VARCHAR}, PromptSqlFunction, PromptBind);
+    CreateTableFunctionInfo prompt_info(prompt_func);
+    catalog.CreateTableFunction(*con.context, &prompt_info);
 
-    auto prompt_func = ScalarFunction("prompt", {LogicalType::VARCHAR}, LogicalType::VARCHAR, PromptScalarFun,
-        PromptBind);
-    CreateScalarFunctionInfo prompt_info(prompt_func);
-    catalog.CreateFunction(*con.context, &prompt_info);
-
-    auto fixup_func = ScalarFunction("prompt_fixup", {LogicalType::VARCHAR}, LogicalType::VARCHAR, FixupScalarFun,
-        FixupBind);
-    CreateScalarFunctionInfo fixup_info(fixup_func);
-    catalog.CreateFunction(*con.context, &fixup_info);
+	TableFunction fixup_func("prompt_fixup", {LogicalType::VARCHAR}, FixupFunction, PromptBind);
+	CreateTableFunctionInfo fixup_info(fixup_func);
+	catalog.CreateTableFunction(*con.context, &fixup_info);
     con.Commit();
 }
 

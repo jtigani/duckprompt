@@ -61,10 +61,11 @@ std::string QuackingDuck::AnalyzeQuery(std::string query) {
     if (schema_representation_.length() > 0) {
         ExplainSchema();
     }
-    chat_.SetSystemContext("You are a helpful assistant that is an expert in SQL code who can a human readable summary of a SQL query.");
+    chat_.SetSystemContext("You are a helpful assistant that is an expert in SQL code who can output "
+           "a human readable summary of a SQL query.");
     std::string whole_prompt = "Here is my SQL query:\n"
         + query
-        + "\nExplain in one sentance what this query will do.";
+        + "\nPlease respond with the SQL query and an explaiation about what the query will do.";
     std::string result = chat_.SendPrompt(whole_prompt);
     query_ = query;
     return result;
@@ -79,9 +80,9 @@ std::string QuackingDuck::FixupQuery(std::string error_message) {
     chat_.SetSystemContext("You are a helpful assistant that can generate Postgresql code based on "
         "the user input. You do not respond with any human readable text, only SQL code.");    
 
-    std::string whole_prompt = "I got the following error: "
+    std::string whole_prompt = "I got the following exception:\n"
         + error_message
-        + "Please correct the query and only print SQL code, without an apology or describing the query.";
+        + "\nPlease correct the query and print only the corrected SQL code, without an apology.";
     query_ = chat_.SendPrompt(whole_prompt);
     return query_;
 }
