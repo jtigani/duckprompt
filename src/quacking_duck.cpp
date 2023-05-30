@@ -42,7 +42,6 @@ std::string QuackingDuck::ExplainSchema(std::string detail) {
 }
 
 void QuackingDuck::StoreSchema(duckdb::SchemaCatalogEntry& schema_entry) {
-    
     std::function<void(duckdb::CatalogEntry*)> callback = [this](duckdb::CatalogEntry* entry) {
         auto &table = (duckdb::TableCatalogEntry &)*entry;
         table_ddl_.push_back(table.ToSQL());
@@ -59,7 +58,7 @@ void QuackingDuck::StoreSchema(duckdb::SchemaCatalogEntry& schema_entry) {
 }
 
 std::string QuackingDuck::AnalyzeQuery(std::string query) {
-    if (schema_representation_.length() == 0) {
+    if (schema_representation_.length() > 0) {
         ExplainSchema();
     }
     chat_.SetSystemContext("You are a helpful assistant that is an expert in SQL code who can a human readable summary of a SQL query.");
