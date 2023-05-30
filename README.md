@@ -1,76 +1,37 @@
 # duckprompt
 
-This repository is based on https://github.com/duckdb/extension-template, check it out if you want to build and ship your own DuckDB extension.
+This is a simple DuckDB extension that calls OpenAI's ChatGPT to do natural language queries. It is based on work from
+Till Döhmen that he described in his blog post here: https://tdoehmen.github.io/blog/2023/03/07/quackingduck.html. 
+
+To summarize, we first call ChatGPT to provide the schema, then we call again to get it generate a SQL query. Till goes a step
+further and checks whether the output parses, and if it doesn't asks ChatGPT to fix it. We don't go so far yet. We also don't
+use samples of the data, only the schema, which makes it harder for chatGPT to answer some questions. But it works surprisingly 
+well with the toy schema I've been working with, even coming up with JOIN queries.
 
 ---
 
-This extension, duckprompt, allow you to ... <extension_goal>.
-
-
-## Building
-To build the extension:
-```sh
-make
-```
-The main binaries that will be built are:
-```sh
-./build/release/duckdb
-./build/release/test/unittest
-./build/release/extension/duckprompt/duckprompt.duckdb_extension
-```
-- `duckdb` is the binary for the duckdb shell with the extension code automatically loaded.
-- `unittest` is the test runner of duckdb. Again, the extension is already linked into the binary.
-- `duckprompt.duckdb_extension` is the loadable binary as it would be distributed.
 
 ## Running the extension
-To run the extension code, simply start the shell with `./build/release/duckdb`.
 
-Now we can use the features from the extension directly in DuckDB. The template contains a single scalar function `quack()` that takes a string arguments and returns a string:
+To run, first install and load the extension.
+To run a natual language query, use `pragma prompt_query`. For example:
 ```
-D select quack('Jane') as result;
-┌───────────────┐
-│    result     │
-│    varchar    │
-├───────────────┤
-│ Quack Jane 🐥 │
-└───────────────┘
-```
-
-## Running the tests
-Different tests can be created for DuckDB extensions. The primary way of testing DuckDB extensions should be the SQL tests in `./test/sql`. These SQL tests can be run using:
-```sh
-make test
+D pragma prompt_query('Return the minimum amount paid by customers who used a visa card (debit or credit) to purchase a product.') ;
+┌───────────┐
+│ min(paid) │
+│  double   │
+├───────────┤
+│     360.0 │
+└───────────┘
 ```
 
-### Installing the deployed binaries
-To install your extension binaries from S3, you will need to do two things. Firstly, DuckDB should be launched with the
-`allow_unsigned_extensions` option set to true. How to set this will depend on the client you're using. Some examples:
-
-CLI:
-```shell
-duckdb -unsigned
+If you want to see what queries actually get run, try the `prompt` function:
 ```
-
-Python:
-```python
-con = duckdb.connect(':memory:', config={'allow_unsigned_extensions' : 'true'})
-```
-
-NodeJS:
-```js
-db = new duckdb.Database(':memory:', {"allow_unsigned_extensions": "true"});
-```
-
-Secondly, you will need to set the repository endpoint in DuckDB to the HTTP url of your bucket + version of the extension
-you want to install. To do this run the following SQL query in DuckDB:
-```sql
-SET custom_extension_repository='bucket.s3.eu-west-1.amazonaws.com/<your_extension_name>/latest';
-```
-Note that the `/latest` path will allow you to install the latest extension version available for your current version of
-DuckDB. To specify a specific version, you can pass the version instead.
-
-After running these steps, you can install and load your extension using the regular INSTALL/LOAD commands in DuckDB:
-```sql
-INSTALL duckprompt
-LOAD duckprompt
+D select prompt('Return the minimum amount paid by customers who used a visa card (debit or credit) to purchase a product.') ;
+┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ prompt('Return the minimum amount paid by customers who used a visa card (debit or credit) to purchase a product.') │
+│                                                       varchar                                                       │
+├─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ SELECT MIN(paid) FROM sales WHERE type_of_payment LIKE '%visa%';                                                    │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
