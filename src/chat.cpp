@@ -176,12 +176,19 @@ std::string Chat::SendPrompt(std::string prompt) {
         headers.push_back(std::make_pair(std::string("Authorization"), auth_header));
     } else {
         std::cerr << "Missing authorization key for OpenAI";
-
     }
 
     context_.push_back(ChatContext("user", prompt));
     std::string body = GenerateRequest(); 
     
     HTTPSResponse response = https.Post(c_chat_uri, headers, body);
-    return (response.code == 200) ? ParseResponse(response.response) : "";
+    if (response.code != 200) {
+        return "";
+    } else {
+        std::string result = ParseResponse(response.response);
+        if (result.size() > 0) {
+            context_.push_back(ChatContext("assistant", result));
+        }
+        return result;
+    }
 }

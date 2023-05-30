@@ -62,7 +62,6 @@ inline void SummarizeSchemaScalarFun(DataChunk &args, ExpressionState &state, Ve
 }
 
 
-
 unique_ptr<FunctionData> SummarizeSchemaBind(ClientContext &context, ScalarFunction &bound_function,
     vector<unique_ptr<Expression> > &arguments) {
     auto bind_data =  make_unique<QuackingDuckBindData>();
@@ -94,16 +93,77 @@ inline void PromptScalarFun(DataChunk &args, ExpressionState &state, Vector &res
         });
 }
 
+unique_ptr<FunctionData> FixupBind(ClientContext &context, ScalarFunction &bound_function,
+    vector<unique_ptr<Expression> > &arguments) {
+    auto bind_data = make_unique<QuackingDuckBindData>();
+    auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
+    auto schema = catalog.GetSchema(context); // Get the default schema.
+    bind_data->quacking_duck.StoreSchema(*schema);
+    return bind_data;
+}
+// Validates a query and returns an error message if the query fails.
+std::string ValidateQuery(std::string query, duckdb::Parser& parser, duckdb::Binder& binder) {
+    std::string error_message;
+    try {
+        parser.ParseQuery(query);
+        if (parser.statements.size() == 0) {
+            // This is not a good query. (how do we find out the error?)
+            return "Unable to parse query";
+        }
+        // TODO: Validate the query is a SELECT query, we shouldn't be automagically doing mutations.
+
+        binder.Bind(*parser.statements[0]);
+
+        // Passed the parse and the bind test!
+    } catch (duckdb::ParserException parser_exception) {
+        error_message = parser_exception.RawMessage();
+    } catch (duckdb::BinderException binder_exception) {
+        error_message = binder_exception.RawMessage();
+    } catch (duckdb::Exception other_exception) {
+        // This isn't an error we can likely correct.
+        error_message = "Unexpected Error Validating Query.";
+    }
+    return error_message;
+}
+
+std::string ValidateAndFixup(ClientContext &context, QuackingDuck quacking_duck, std::string query) {
+    duckdb::Parser parser;
+    shared_ptr<duckdb::Binder> binder = Binder::CreateBinder(context);
+    std::string error_message = ValidateQuery(query, parser, *binder);
+    if (error_message.size() == 0) {
+        return query;
+    } else {
+        // First analyze the query which tells the AI about the query and adds it to the 
+        // chat context.
+        if (!quacking_duck.HasSeenQuery(query)) {
+            quacking_duck.AnalyzeQuery(query);
+        }
+        return quacking_duck.FixupQuery(error_message);
+    }
+}
+
+inline void FixupScalarFun(DataChunk &args, ExpressionState &state, Vector &result) {
+    auto &name_vector = args.data[0];
+    auto &func_expr = (BoundFunctionExpression &)state.expr;
+    auto &info = (QuackingDuckBindData &)*func_expr.bind_info;
+    UnaryExecutor::Execute<string_t, string_t>(
+	    name_vector, result, args.size(),
+	    [&](string_t name) { 
+            std::string response = ValidateAndFixup(state.GetContext(), 
+                info.quacking_duck, name.GetString());
+            return StringVector::AddString(result, response);;
+        });
+}
+
 static string PragmaPromptQuery(ClientContext &context, const FunctionParameters &parameters) {
 	auto prompt = StringValue::Get(parameters.values[0]);
-
     auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
     auto schema = catalog.GetSchema(context); // Get the default schema.
     QuackingDuck quacking_duck;
     quacking_duck.StoreSchema(*schema);
-    return quacking_duck.Ask(prompt);
+    std::string query_result = quacking_duck.Ask(prompt);
+    return ValidateAndFixup(context, quacking_duck, query_result);
 }
-
 
  void LoadInternal(DatabaseInstance &instance) {
     Connection con(instance);
@@ -116,7 +176,7 @@ static string PragmaPromptQuery(ClientContext &context, const FunctionParameters
 	catalog.CreatePragmaFunction(*con.context, &info);
 
 
-    auto summarize_func = ScalarFunction("summarize_schema", {LogicalType::VARCHAR}, LogicalType::VARCHAR,
+    auto summarize_func = ScalarFunction("prompt_schema", {LogicalType::VARCHAR}, LogicalType::VARCHAR,
         SummarizeSchemaScalarFun, SummarizeSchemaBind);
     CreateScalarFunctionInfo summarize_info(summarize_func);
 	catalog.CreateFunction(*con.context, &summarize_info);
@@ -125,6 +185,11 @@ static string PragmaPromptQuery(ClientContext &context, const FunctionParameters
         PromptBind);
     CreateScalarFunctionInfo prompt_info(prompt_func);
     catalog.CreateFunction(*con.context, &prompt_info);
+
+    auto fixup_func = ScalarFunction("prompt_fixup", {LogicalType::VARCHAR}, LogicalType::VARCHAR, FixupScalarFun,
+        FixupBind);
+    CreateScalarFunctionInfo fixup_info(fixup_func);
+    catalog.CreateFunction(*con.context, &fixup_info);
     con.Commit();
 }
 
