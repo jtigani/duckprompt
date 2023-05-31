@@ -41,9 +41,18 @@ std::string QuackingDuck::ExplainSchema(std::string detail) {
     return chat_.SendPrompt(whole_prompt);
 }
 
+void QuackingDuck::StoreSchema(duckdb::ClientContext& context) {
+    auto &catalog = duckdb::Catalog::GetCatalog(context, INVALID_CATALOG);
+    auto callback = [&](
+            duckdb::SchemaCatalogEntry& schema_entry) {
+        StoreSchema(schema_entry);
+    };
+    catalog.ScanSchemas(context, callback);
+}
+
 void QuackingDuck::StoreSchema(duckdb::SchemaCatalogEntry& schema_entry) {
-    std::function<void(duckdb::CatalogEntry*)> callback = [this](duckdb::CatalogEntry* entry) {
-        auto &table = (duckdb::TableCatalogEntry &)*entry;
+    auto callback = [this](duckdb::CatalogEntry& entry) {
+        auto &table = (duckdb::TableCatalogEntry &)entry;
         table_ddl_.push_back(table.ToSQL());
     };
     schema_entry.Scan(duckdb::CatalogType::TABLE_ENTRY, callback);

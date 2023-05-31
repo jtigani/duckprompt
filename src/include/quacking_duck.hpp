@@ -12,14 +12,16 @@ public:
     std::string Ask(std::string question);
     std::string ExplainSchema(std::string detail = "one sentence");
     
-    
     std::string AnalyzeQuery(std::string query);
 
     // You should call Ask or AnalyzeQuery before calling FixupQuery.
     std::string FixupQuery(std::string error_message);
-    void StoreSchema(duckdb::SchemaCatalogEntry& schema_entry);
+    void StoreSchema(duckdb::ClientContext& context);
 
     bool HasSeenQuery(std::string query) {return query == query_;}
+
+private:
+    void StoreSchema(duckdb::SchemaCatalogEntry& schema_entry);
 
 private:
     Chat chat_;

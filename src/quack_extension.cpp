@@ -10,6 +10,7 @@
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/function_binder.hpp"
 #include "duckdb/function/scalar_function.hpp"
+#include "duckdb/main/extension_util.hpp"
 #include "duckdb/function/table_function.hpp"
 #include "duckdb/parser/parsed_data/create_pragma_function_info.hpp"
 #include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
@@ -37,9 +38,7 @@ static void SummarizeSchemaFunction(ClientContext &context, TableFunctionInput &
 	data.finished = true;
 
     QuackingDuck quacking_duck;
-    auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
-    auto schema = catalog.GetSchema(context); // Get the default schema.
-    quacking_duck.StoreSchema(*schema);
+    quacking_duck.StoreSchema(context);
 
     std::string response = quacking_duck.ExplainSchema();
     output.SetCardinality(1);
@@ -54,9 +53,7 @@ static void PromptSqlFunction(ClientContext &context, TableFunctionInput &data_p
 	data.finished = true;
 
     QuackingDuck quacking_duck;
-    auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
-    auto schema = catalog.GetSchema(context); // Get the default schema.
-    quacking_duck.StoreSchema(*schema);
+    quacking_duck.StoreSchema(context);
     std::string response = quacking_duck.Ask(data.prompt);
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
@@ -105,7 +102,7 @@ std::string ValidateAndFixup(ClientContext &context, QuackingDuck quacking_duck,
 
 static unique_ptr<FunctionData> SummarizeBind(ClientContext &context, TableFunctionBindInput &input,
                                           vector<LogicalType> &return_types, vector<string> &names) {
-	auto result = make_unique<PromptFunctionData>();
+	auto result = make_uniq<PromptFunctionData>();
 	return_types.emplace_back(LogicalType::VARCHAR);
 	names.emplace_back("summary");
 	return std::move(result);
@@ -113,7 +110,7 @@ static unique_ptr<FunctionData> SummarizeBind(ClientContext &context, TableFunct
 
 static unique_ptr<FunctionData> PromptBind(ClientContext &context, TableFunctionBindInput &input,
                                           vector<LogicalType> &return_types, vector<string> &names) {
-	auto result = make_unique<PromptFunctionData>();
+	auto result = make_uniq<PromptFunctionData>();
     if (input.inputs.size() > 0) {
       result->prompt = input.inputs[0].template GetValue<std::string>();
     }
@@ -121,6 +118,7 @@ static unique_ptr<FunctionData> PromptBind(ClientContext &context, TableFunction
 	names.emplace_back("query");
 	return std::move(result);
 }
+
 
 static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &data = (PromptFunctionData &)*data_p.bind_data;
@@ -130,9 +128,7 @@ static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, Da
 	data.finished = true;
 
     QuackingDuck quacking_duck;
-    auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
-    auto schema = catalog.GetSchema(context); // Get the default schema.
-    quacking_duck.StoreSchema(*schema);
+    quacking_duck.StoreSchema(context);
     std::string response = ValidateAndFixup(context, quacking_duck, data.prompt);
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
@@ -140,37 +136,27 @@ static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, Da
 
 static string PragmaPromptQuery(ClientContext &context, const FunctionParameters &parameters) {
 	auto prompt = StringValue::Get(parameters.values[0]);
-    auto &catalog = Catalog::GetCatalog(context, INVALID_CATALOG);
-    auto schema = catalog.GetSchema(context); // Get the default schema.
     QuackingDuck quacking_duck;
-    quacking_duck.StoreSchema(*schema);
+    quacking_duck.StoreSchema(context);
     std::string query_result = quacking_duck.Ask(prompt);
     return ValidateAndFixup(context, quacking_duck, query_result);
 }
 
- void LoadInternal(DatabaseInstance &instance) {
-    Connection con(instance);
-	con.BeginTransaction();
-	auto &catalog = Catalog::GetSystemCatalog(*con.context);
-
+ void LoadInternal(DatabaseInstance &db_instance) {
     // create the TPCH pragma that allows us to run the query
 	auto prompt_query_func = PragmaFunction::PragmaCall("prompt_query", PragmaPromptQuery, {LogicalType::VARCHAR});
-	CreatePragmaFunctionInfo info(prompt_query_func);
-	catalog.CreatePragmaFunction(*con.context, &info);
+    ExtensionUtil::RegisterFunction(db_instance, prompt_query_func);
+
 
     TableFunction summarize_func("prompt_schema", {},
         SummarizeSchemaFunction, SummarizeBind);
-    CreateTableFunctionInfo summarize_info(summarize_func);
-	catalog.CreateTableFunction(*con.context, &summarize_info);
+    ExtensionUtil::RegisterFunction(db_instance, summarize_func);
 
     TableFunction prompt_func("prompt_sql", {LogicalType::VARCHAR}, PromptSqlFunction, PromptBind);
-    CreateTableFunctionInfo prompt_info(prompt_func);
-    catalog.CreateTableFunction(*con.context, &prompt_info);
+    ExtensionUtil::RegisterFunction(db_instance, prompt_func);
 
 	TableFunction fixup_func("prompt_fixup", {LogicalType::VARCHAR}, FixupFunction, PromptBind);
-	CreateTableFunctionInfo fixup_info(fixup_func);
-	catalog.CreateTableFunction(*con.context, &fixup_info);
-    con.Commit();
+    ExtensionUtil::RegisterFunction(db_instance, fixup_func);
 }
 
 void QuackExtension::Load(DuckDB &db) {
