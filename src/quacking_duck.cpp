@@ -53,7 +53,14 @@ void QuackingDuck::StoreSchema(duckdb::ClientContext& context) {
 void QuackingDuck::StoreSchema(duckdb::SchemaCatalogEntry& schema_entry) {
     auto callback = [this](duckdb::CatalogEntry& entry) {
         auto &table = (duckdb::TableCatalogEntry &)entry;
-        table_ddl_.push_back(table.ToSQL());
+        std::string name = table.name;
+        std::string sql = table.ToSQL();
+        if (sql.substr(0, 6) == "SELECT") {
+            // this is a system view that for some reason shows up
+            // as a table.
+            return;
+        }
+        table_ddl_.push_back(sql);
     };
     schema_entry.Scan(duckdb::CatalogType::TABLE_ENTRY, callback);
 

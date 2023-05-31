@@ -3,8 +3,9 @@
 #include <vector>
 #include <string>
 
-#include "quack_extension.hpp"
+#include "duckprompt_extension.hpp"
 #include "chat.hpp"
+#include "quacking_duck.hpp"
 #include "duckdb.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
@@ -159,10 +160,10 @@ static string PragmaPromptQuery(ClientContext &context, const FunctionParameters
     ExtensionUtil::RegisterFunction(db_instance, fixup_func);
 }
 
-void QuackExtension::Load(DuckDB &db) {
+void DuckpromptExtension::Load(DuckDB &db) {
 	LoadInternal(*db.instance);
 }
-std::string QuackExtension::Name() {
+std::string DuckpromptExtension::Name() {
 	return "duckprompt";
 }
 
@@ -170,11 +171,11 @@ std::string QuackExtension::Name() {
 
 extern "C" {
 
-DUCKDB_EXTENSION_API void quack_init(duckdb::DatabaseInstance &db) {
+DUCKDB_EXTENSION_API void duckprompt_init(duckdb::DatabaseInstance &db) {
 	LoadInternal(db);
 }
 
-DUCKDB_EXTENSION_API const char *quack_version() {
+DUCKDB_EXTENSION_API const char *duckprompt_version() {
 	return duckdb::DuckDB::LibraryVersion();
 }
 }

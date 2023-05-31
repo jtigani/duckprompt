@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.12)
 
 # Set extension name here
-set(TARGET_NAME quack)
+set(TARGET_NAME duckprompt)
 
 set(EXTENSION_NAME ${TARGET_NAME}_extension)
 project(${TARGET_NAME})
@@ -21,7 +21,7 @@ if(NOT TARGET yyjson)
 endif()
 
 
-set(EXTENSION_SOURCES src/quack_extension.cpp src/https.cpp src/chat.cpp src/quacking_duck.cpp ${YYJSON_OBJECT_FILES})
+set(EXTENSION_SOURCES src/duckprompt_extension.cpp src/https.cpp src/chat.cpp src/quacking_duck.cpp ${YYJSON_OBJECT_FILES})
 add_library(${EXTENSION_NAME} STATIC ${EXTENSION_SOURCES})
 target_link_libraries(${EXTENSION_NAME}
                       ${OPENSSL_LIBRARIES}

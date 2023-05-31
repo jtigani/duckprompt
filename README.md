@@ -13,7 +13,16 @@ well with the toy schema I've been working with, even coming up with JOIN querie
 
 ## Running the extension
 
+To run, you'll need an openai key. You can get one here:
+https://platform.openai.com/account/api-keys
+
 To run, first install and load the extension.
+```
+force install '<path to duckprompt>/duckprompt'
+load duckprompt
+
+```
+
 To run a natual language query, use `pragma prompt_query`. For example:
 ```
 D pragma prompt_query('Return the minimum amount paid by customers who used a visa card (debit or credit) to purchase a product.') ;
@@ -25,13 +34,25 @@ D pragma prompt_query('Return the minimum amount paid by customers who used a vi
 └───────────┘
 ```
 
-If you want to see what queries actually get run, try the `prompt` function:
+If you want to see what queries actually get run, try the `prompt_sql` table function:
 ```
-D select prompt('Return the minimum amount paid by customers who used a visa card (debit or credit) to purchase a product.') ;
+D select * from prompt_sql('Return the minimum amount paid by customers who used a visa card (debit or credit) to purchase a product.') ;
 ┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ prompt('Return the minimum amount paid by customers who used a visa card (debit or credit) to purchase a product.') │
 │                                                       varchar                                                       │
 ├─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ SELECT MIN(paid) FROM sales WHERE type_of_payment LIKE '%visa%';                                                    │
 └─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+You can also "fix" a query. To fix a query, run `prompt_fixup' table function. This can detect errors with syntax,
+usage, and even fix problems relating to the schame.
+```
+D select * from prompt_fixup("SEELECT * from customers");
+┌─────────────────────────┐
+│          query          │
+│         varchar         │
+├─────────────────────────┤
+│ SELECT * FROM customers │
+└─────────────────────────┘
 ```

@@ -2,11 +2,9 @@
 
 #include "duckdb.hpp"
 
-#include "quacking_duck.hpp"
-
 namespace duckdb {
 
-class QuackExtension : public Extension {
+class DuckpromptExtension : public Extension {
 public:
 	void Load(DuckDB &db) override;
 	std::string Name() override;
