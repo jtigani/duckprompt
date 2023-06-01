@@ -1,24 +1,13 @@
-#include <iostream>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "quacking_duck.hpp"
 #include "chat.hpp"
 #include "yyjson.hpp"
 
-#include "duckdb/catalog/catalog.hpp"
-#include "duckdb/catalog/catalog_entry.hpp"
-#include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
-#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
-#include "duckdb/parser/parser.hpp"
-#include "duckdb/planner/binder.hpp"
-
 QuackingDuck::QuackingDuck() : chat_("") {}
 
 std::string QuackingDuck::Ask(std::string question) {
-    if (schema_representation_.length() > 0) {
-        ExplainSchema();
-    }
     chat_.SetSystemContext("You are a helpful assistant that can generate Postgresql code based on "
         "the user input. You do not respond with any human readable text, only SQL code.");    
     std::string whole_prompt = "Output a single SQL query without any explanation and do "
@@ -32,51 +21,26 @@ std::string QuackingDuck::Ask(std::string question) {
     return query_;
 }
 
-std::string QuackingDuck::ExplainSchema(std::string detail) {
+std::string QuackingDuck::ExplainSchema(const ExtractedSchema& extracted_schema) {
     chat_.Reset("You are a helpful assistant that can generate an human redable summary of database content based on the schema.");
 
     std::string whole_prompt = "SQL schema of my database:\n" 
-        + schema_representation_
-        + "\nExplain in " + detail + " what the data is about";
+        + extracted_schema.SchemaToString()
+        + "\nExplain in one sentence what the data is about";
     return chat_.SendPrompt(whole_prompt);
 }
 
-void QuackingDuck::StoreSchema(duckdb::ClientContext& context) {
-    auto &catalog = duckdb::Catalog::GetCatalog(context, INVALID_CATALOG);
-    auto callback = [&](
-            duckdb::SchemaCatalogEntry& schema_entry) {
-        StoreSchema(schema_entry);
-    };
-    catalog.ScanSchemas(context, callback);
-}
-
-void QuackingDuck::StoreSchema(duckdb::SchemaCatalogEntry& schema_entry) {
-    auto callback = [this](duckdb::CatalogEntry& entry) {
-        auto &table = (duckdb::TableCatalogEntry &)entry;
-        std::string name = table.name;
-        std::string sql = table.ToSQL();
-        if (sql.substr(0, 6) == "SELECT") {
-            // this is a system view that for some reason shows up
-            // as a table.
-            return;
-        }
-        table_ddl_.push_back(sql);
-    };
-    schema_entry.Scan(duckdb::CatalogType::TABLE_ENTRY, callback);
-
+std::string ExtractedSchema::SchemaToString() const {
     std::string schema = "";
-    for (std::string table_ddl : table_ddl_) {
-        schema.append(table_ddl);
+    for (std::string current_table_ddl : table_ddl) {
+        schema.append(current_table_ddl);
         schema.append("\n");
     }
 
-    schema_representation_ = schema;
+    return schema;
 }
 
 std::string QuackingDuck::AnalyzeQuery(std::string query) {
-    if (schema_representation_.length() > 0) {
-        ExplainSchema();
-    }
     chat_.SetSystemContext("You are a helpful assistant that is an expert in SQL code who can output "
            "a human readable summary of a SQL query.");
     std::string whole_prompt = "Here is my SQL query:\n"

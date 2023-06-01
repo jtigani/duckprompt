@@ -1,12 +1,16 @@
 #define DUCKDB_EXTENSION_MAIN
 
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "duckprompt_extension.hpp"
 #include "chat.hpp"
 #include "quacking_duck.hpp"
 #include "duckdb.hpp"
+#include "duckdb/catalog/catalog.hpp"
+#include "duckdb/catalog/catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/schema_catalog_entry.hpp"
+#include "duckdb/catalog/catalog_entry/table_catalog_entry.hpp"
 #include "duckdb/common/exception.hpp"
 #include "duckdb/common/string_util.hpp"
 #include "duckdb/function/function_binder.hpp"
@@ -19,17 +23,47 @@
 #include "duckdb/parser/parsed_data/create_view_info.hpp"
 #include "duckdb/parser/parser.hpp"
 #include "duckdb/parser/statement/select_statement.hpp"
+#include "duckdb/planner/binder.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 
 namespace duckdb {
 
 struct PromptFunctionData : public TableFunctionData {
-	PromptFunctionData() {
-	}
+	PromptFunctionData() : finished(false) { }
 
     std::string prompt;
-	bool finished = false;
+	bool finished;
 };
+
+static void ExtractSchema(duckdb::SchemaCatalogEntry& schema_entry,
+    ExtractedSchema& extracted_schema) {
+
+    auto callback = [&](duckdb::CatalogEntry& entry) {
+        auto &table = (duckdb::TableCatalogEntry &)entry;
+        std::string name = table.name;
+        std::string sql = table.ToSQL();
+        if (sql.substr(0, 6) == "SELECT") {
+            // this is a system view that for some reason shows up
+            // as a table (system views).
+            return;
+        }
+        extracted_schema.table_ddl.emplace_back(sql);
+        
+    };
+    schema_entry.Scan(duckdb::CatalogType::TABLE_ENTRY, callback);
+}
+
+
+static std::string ExplainSchema(duckdb::ClientContext& context, QuackingDuck& quacking_duck) {
+	ExtractedSchema extracted_schema;
+    auto &catalog = duckdb::Catalog::GetCatalog(context, INVALID_CATALOG);
+    auto callback = [&](
+            duckdb::SchemaCatalogEntry& schema_entry) {
+        ExtractSchema(schema_entry, extracted_schema);
+    };
+    catalog.ScanSchemas(context, callback);
+    return quacking_duck.ExplainSchema(extracted_schema);
+}
 
 static void SummarizeSchemaFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &data = (PromptFunctionData &)*data_p.bind_data;
@@ -39,9 +73,7 @@ static void SummarizeSchemaFunction(ClientContext &context, TableFunctionInput &
 	data.finished = true;
 
     QuackingDuck quacking_duck;
-    quacking_duck.StoreSchema(context);
-
-    std::string response = quacking_duck.ExplainSchema();
+    std::string response = ExplainSchema(context, quacking_duck);
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
 }
@@ -54,7 +86,7 @@ static void PromptSqlFunction(ClientContext &context, TableFunctionInput &data_p
 	data.finished = true;
 
     QuackingDuck quacking_duck;
-    quacking_duck.StoreSchema(context);
+    ExplainSchema(context, quacking_duck);
     std::string response = quacking_duck.Ask(data.prompt);
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
@@ -129,7 +161,7 @@ static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, Da
 	data.finished = true;
 
     QuackingDuck quacking_duck;
-    quacking_duck.StoreSchema(context);
+    ExplainSchema(context, quacking_duck);
     std::string response = ValidateAndFixup(context, quacking_duck, data.prompt);
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
@@ -138,7 +170,7 @@ static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, Da
 static string PragmaPromptQuery(ClientContext &context, const FunctionParameters &parameters) {
 	auto prompt = StringValue::Get(parameters.values[0]);
     QuackingDuck quacking_duck;
-    quacking_duck.StoreSchema(context);
+    ExplainSchema(context, quacking_duck);
     std::string query_result = quacking_duck.Ask(prompt);
     return ValidateAndFixup(context, quacking_duck, query_result);
 }
