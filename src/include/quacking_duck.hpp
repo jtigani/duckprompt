@@ -17,17 +17,22 @@ class DatabaseInterface {
     virtual std::string ValidateSemantics(std::string query) = 0;
 };
 
+// Runs natual language to SQL prompting.
 class QuackingDuck {
 public:
     QuackingDuck(DatabaseInterface& db) : db_(db), chat_("") { }
 
+    // Returns a one sentance summary of a schema.
     std::string ExplainSchema();
-    // Returns the SQL.
+
+    // Asks a Natural Language prompt, returns a SQL query.
     std::string Ask(std::string prompt);
-    // Returns the fixed query.
+
+    // Given a query that may or may not be syntactically correct,
+    // returns a fixed version of the query.
     std::string FixupQuery(std::string query);
 
-   public:
+   private:
     // In order to get QuackingDuck to take into account schema, call
     // this before asking other questions.
     std::string ExplainSchemaPrompt(const ExtractedSchema& extracted_schema); 
@@ -40,8 +45,6 @@ public:
 
     // You should call Ask or AnalyzeQuery before calling FixupQuery.
     std::string FixupQueryPrompt(std::string error_message);
-
-    bool HasSeenQuery(std::string query) {return query == query_;}
 
 private:
     Chat chat_;

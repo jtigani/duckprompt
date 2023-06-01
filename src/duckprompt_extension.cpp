@@ -28,8 +28,9 @@
 
 namespace duckdb {
 
+// Encapsulates database operations that are needed by the
+// QuackingDuck prompt engine.
 class DuckDatabaseInterface : public DatabaseInterface {
-
   public:
     DuckDatabaseInterface(ClientContext& context) : context_(context) { }
     virtual void ExtractSchema(ExtractedSchema& extracted_schema) {
@@ -80,8 +81,6 @@ class DuckDatabaseInterface : public DatabaseInterface {
                 // This is not a good query. (how do we find out the error?)
                 return "Unable to parse query";
             }
-            // TODO: Validate the query is a SELECT query, we shouldn't be automagically doing mutations.
-
             if (bind) {
                 shared_ptr<duckdb::Binder> binder = Binder::CreateBinder(context_);
                 binder->Bind(*parser.statements[0]);
@@ -101,18 +100,17 @@ class DuckDatabaseInterface : public DatabaseInterface {
 };
 
 struct PromptFunctionData : public TableFunctionData {
-	PromptFunctionData() : finished(false) { }
-
+    PromptFunctionData() : finished(false) { }
     std::string prompt;
-	bool finished;
+    bool finished;
 };
 
 static void SummarizeSchemaFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-	auto &data = (PromptFunctionData &)*data_p.bind_data;
-	if (data.finished) {
-		return;
-	}
-	data.finished = true;
+    auto &data = (PromptFunctionData &)*data_p.bind_data;
+    if (data.finished) {
+        return;
+    }
+    data.finished = true;
 
     DuckDatabaseInterface dbInterface(context);
     QuackingDuck quacking_duck(dbInterface);
@@ -122,11 +120,11 @@ static void SummarizeSchemaFunction(ClientContext &context, TableFunctionInput &
 }
 
 static void PromptSqlFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-	auto &data = (PromptFunctionData &)*data_p.bind_data;
-	if (data.finished) {
-		return;
-	}
-	data.finished = true;
+    auto &data = (PromptFunctionData &)*data_p.bind_data;
+    if (data.finished) {
+        return;
+    }
+    data.finished = true;
 
     DuckDatabaseInterface dbInterface(context);
     QuackingDuck quacking_duck(dbInterface);
@@ -138,29 +136,29 @@ static void PromptSqlFunction(ClientContext &context, TableFunctionInput &data_p
 
 static unique_ptr<FunctionData> SummarizeBind(ClientContext &context, TableFunctionBindInput &input,
                                           vector<LogicalType> &return_types, vector<string> &names) {
-	auto result = make_uniq<PromptFunctionData>();
-	return_types.emplace_back(LogicalType::VARCHAR);
-	names.emplace_back("summary");
-	return std::move(result);
+    auto result = make_uniq<PromptFunctionData>();
+    return_types.emplace_back(LogicalType::VARCHAR);
+    names.emplace_back("summary");
+    return std::move(result);
 }
 
 static unique_ptr<FunctionData> PromptBind(ClientContext &context, TableFunctionBindInput &input,
                                           vector<LogicalType> &return_types, vector<string> &names) {
-	auto result = make_uniq<PromptFunctionData>();
+    auto result = make_uniq<PromptFunctionData>();
     if (input.inputs.size() > 0) {
       result->prompt = input.inputs[0].template GetValue<std::string>();
     }
-	return_types.emplace_back(LogicalType::VARCHAR);
-	names.emplace_back("query");
-	return std::move(result);
+    return_types.emplace_back(LogicalType::VARCHAR);
+    names.emplace_back("query");
+    return std::move(result);
 }
 
 static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
-	auto &data = (PromptFunctionData &)*data_p.bind_data;
-	if (data.finished) {
-		return;
-	}
-	data.finished = true;
+    auto &data = (PromptFunctionData &)*data_p.bind_data;
+    if (data.finished) {
+        return;
+    }
+    data.finished = true;
 
     DuckDatabaseInterface dbInterface(context);
     QuackingDuck quacking_duck(dbInterface);
@@ -170,7 +168,7 @@ static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, Da
 }
 
 static string PragmaPromptQuery(ClientContext &context, const FunctionParameters &parameters) {
-	auto prompt = StringValue::Get(parameters.values[0]);
+    auto prompt = StringValue::Get(parameters.values[0]);
     DuckDatabaseInterface dbInterface(context);
     QuackingDuck quacking_duck(dbInterface);
     std::string query_result = quacking_duck.Ask(prompt);
@@ -179,25 +177,27 @@ static string PragmaPromptQuery(ClientContext &context, const FunctionParameters
 
  void LoadInternal(DatabaseInstance &db_instance) {
     // create the TPCH pragma that allows us to run the query
-	auto prompt_query_func = PragmaFunction::PragmaCall("prompt_query", PragmaPromptQuery, {LogicalType::VARCHAR});
+    auto prompt_query_func = PragmaFunction::PragmaCall("prompt_query", PragmaPromptQuery, 
+            {LogicalType::VARCHAR});
     ExtensionUtil::RegisterFunction(db_instance, prompt_query_func);
 
     TableFunction summarize_func("prompt_schema", {},
         SummarizeSchemaFunction, SummarizeBind);
     ExtensionUtil::RegisterFunction(db_instance, summarize_func);
 
-    TableFunction prompt_func("prompt_sql", {LogicalType::VARCHAR}, PromptSqlFunction, PromptBind);
+    TableFunction prompt_func("prompt_sql", {LogicalType::VARCHAR}, PromptSqlFunction,
+            PromptBind);
     ExtensionUtil::RegisterFunction(db_instance, prompt_func);
 
-	TableFunction fixup_func("prompt_fixup", {LogicalType::VARCHAR}, FixupFunction, PromptBind);
+    TableFunction fixup_func("prompt_fixup", {LogicalType::VARCHAR}, FixupFunction, PromptBind);
     ExtensionUtil::RegisterFunction(db_instance, fixup_func);
 }
 
 void DuckpromptExtension::Load(DuckDB &db) {
-	LoadInternal(*db.instance);
+    LoadInternal(*db.instance);
 }
 std::string DuckpromptExtension::Name() {
-	return "duckprompt";
+    return "duckprompt";
 }
 
 } // namespace duckdb
@@ -205,11 +205,11 @@ std::string DuckpromptExtension::Name() {
 extern "C" {
 
 DUCKDB_EXTENSION_API void duckprompt_init(duckdb::DatabaseInstance &db) {
-	LoadInternal(db);
+    LoadInternal(db);
 }
 
 DUCKDB_EXTENSION_API const char *duckprompt_version() {
-	return duckdb::DuckDB::LibraryVersion();
+    return duckdb::DuckDB::LibraryVersion();
 }
 }
 

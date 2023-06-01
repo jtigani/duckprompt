@@ -56,3 +56,9 @@ D select * from prompt_fixup("SEELECT * from customers");
 │ SELECT * FROM customers │
 └─────────────────────────┘
 ```
+
+Also note that if you want to set up sample data with a sales star schema you
+can run the following script
+```
+build/release/duckdb -init ./scripts/build_sample_db.sql ./build/release/sales.db 
+```
