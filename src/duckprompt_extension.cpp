@@ -28,42 +28,84 @@
 
 namespace duckdb {
 
+class DuckDatabaseInterface : public DatabaseInterface {
+
+  public:
+    DuckDatabaseInterface(ClientContext& context) : context_(context) { }
+    virtual void ExtractSchema(ExtractedSchema& extracted_schema) {
+        auto &catalog = duckdb::Catalog::GetCatalog(context_, INVALID_CATALOG);
+        auto callback = [&](
+                duckdb::SchemaCatalogEntry& schema_entry) {
+            ExtractSchema(schema_entry, extracted_schema);
+        };
+        catalog.ScanSchemas(context_, callback);
+    }
+
+    virtual std::string ValidateParse(std::string query) {
+        return ValidateQuery(query, false);
+    }
+    virtual std::string ValidateSemantics(std::string query) {
+        return ValidateQuery(query, true);
+    }
+
+  private:
+    ClientContext& context_;
+
+  private:
+    void ExtractSchema(
+        duckdb::SchemaCatalogEntry& schema_entry,
+        ExtractedSchema& extracted_schema) {
+
+        auto callback = [&](duckdb::CatalogEntry& entry) {
+            auto &table = (duckdb::TableCatalogEntry &)entry;
+            std::string name = table.name;
+            std::string sql = table.ToSQL();
+            if (sql.substr(0, 6) == "SELECT") {
+                // this is a system view that for some reason shows up
+                // as a table (system views).
+                return;
+            }
+            extracted_schema.table_ddl.emplace_back(sql);
+        };
+        schema_entry.Scan(duckdb::CatalogType::TABLE_ENTRY, callback);
+    }
+
+    // Validates a query and returns an error message if the query fails.
+    std::string ValidateQuery(std::string query, bool bind) {
+        std::string error_message;
+        duckdb::Parser parser;
+        try {
+            parser.ParseQuery(query);
+            if (parser.statements.size() == 0) {
+                // This is not a good query. (how do we find out the error?)
+                return "Unable to parse query";
+            }
+            // TODO: Validate the query is a SELECT query, we shouldn't be automagically doing mutations.
+
+            if (bind) {
+                shared_ptr<duckdb::Binder> binder = Binder::CreateBinder(context_);
+                binder->Bind(*parser.statements[0]);
+            }
+
+            // Passed the parse and the bind test!
+        } catch (duckdb::ParserException parser_exception) {
+            error_message = parser_exception.RawMessage();
+        } catch (duckdb::BinderException binder_exception) {
+            error_message = binder_exception.RawMessage();
+        } catch (duckdb::Exception other_exception) {
+            // This isn't an error we can likely correct.
+            error_message = "Unexpected Error Validating Query.";
+        }
+        return error_message;
+    }
+};
+
 struct PromptFunctionData : public TableFunctionData {
 	PromptFunctionData() : finished(false) { }
 
     std::string prompt;
 	bool finished;
 };
-
-static void ExtractSchema(duckdb::SchemaCatalogEntry& schema_entry,
-    ExtractedSchema& extracted_schema) {
-
-    auto callback = [&](duckdb::CatalogEntry& entry) {
-        auto &table = (duckdb::TableCatalogEntry &)entry;
-        std::string name = table.name;
-        std::string sql = table.ToSQL();
-        if (sql.substr(0, 6) == "SELECT") {
-            // this is a system view that for some reason shows up
-            // as a table (system views).
-            return;
-        }
-        extracted_schema.table_ddl.emplace_back(sql);
-        
-    };
-    schema_entry.Scan(duckdb::CatalogType::TABLE_ENTRY, callback);
-}
-
-
-static std::string ExplainSchema(duckdb::ClientContext& context, QuackingDuck& quacking_duck) {
-	ExtractedSchema extracted_schema;
-    auto &catalog = duckdb::Catalog::GetCatalog(context, INVALID_CATALOG);
-    auto callback = [&](
-            duckdb::SchemaCatalogEntry& schema_entry) {
-        ExtractSchema(schema_entry, extracted_schema);
-    };
-    catalog.ScanSchemas(context, callback);
-    return quacking_duck.ExplainSchema(extracted_schema);
-}
 
 static void SummarizeSchemaFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &data = (PromptFunctionData &)*data_p.bind_data;
@@ -72,8 +114,9 @@ static void SummarizeSchemaFunction(ClientContext &context, TableFunctionInput &
 	}
 	data.finished = true;
 
-    QuackingDuck quacking_duck;
-    std::string response = ExplainSchema(context, quacking_duck);
+    DuckDatabaseInterface dbInterface(context);
+    QuackingDuck quacking_duck(dbInterface);
+    std::string response = quacking_duck.ExplainSchema();
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
 }
@@ -85,53 +128,13 @@ static void PromptSqlFunction(ClientContext &context, TableFunctionInput &data_p
 	}
 	data.finished = true;
 
-    QuackingDuck quacking_duck;
-    ExplainSchema(context, quacking_duck);
+    DuckDatabaseInterface dbInterface(context);
+    QuackingDuck quacking_duck(dbInterface);
     std::string response = quacking_duck.Ask(data.prompt);
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
 }
 
-// Validates a query and returns an error message if the query fails.
-std::string ValidateQuery(std::string query, duckdb::Parser& parser, duckdb::Binder& binder) {
-    std::string error_message;
-    try {
-        parser.ParseQuery(query);
-        if (parser.statements.size() == 0) {
-            // This is not a good query. (how do we find out the error?)
-            return "Unable to parse query";
-        }
-        // TODO: Validate the query is a SELECT query, we shouldn't be automagically doing mutations.
-
-        binder.Bind(*parser.statements[0]);
-
-        // Passed the parse and the bind test!
-    } catch (duckdb::ParserException parser_exception) {
-        error_message = parser_exception.RawMessage();
-    } catch (duckdb::BinderException binder_exception) {
-        error_message = binder_exception.RawMessage();
-    } catch (duckdb::Exception other_exception) {
-        // This isn't an error we can likely correct.
-        error_message = "Unexpected Error Validating Query.";
-    }
-    return error_message;
-}
-
-std::string ValidateAndFixup(ClientContext &context, QuackingDuck quacking_duck, std::string query) {
-    duckdb::Parser parser;
-    shared_ptr<duckdb::Binder> binder = Binder::CreateBinder(context);
-    std::string error_message = ValidateQuery(query, parser, *binder);
-    if (error_message.size() == 0) {
-        return query;
-    } else {
-        // First analyze the query which tells the AI about the query and adds it to the 
-        // chat context.
-        if (!quacking_duck.HasSeenQuery(query)) {
-            quacking_duck.AnalyzeQuery(query);
-        }
-        return quacking_duck.FixupQuery(error_message);
-    }
-}
 
 static unique_ptr<FunctionData> SummarizeBind(ClientContext &context, TableFunctionBindInput &input,
                                           vector<LogicalType> &return_types, vector<string> &names) {
@@ -152,7 +155,6 @@ static unique_ptr<FunctionData> PromptBind(ClientContext &context, TableFunction
 	return std::move(result);
 }
 
-
 static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, DataChunk &output) {
 	auto &data = (PromptFunctionData &)*data_p.bind_data;
 	if (data.finished) {
@@ -160,26 +162,25 @@ static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, Da
 	}
 	data.finished = true;
 
-    QuackingDuck quacking_duck;
-    ExplainSchema(context, quacking_duck);
-    std::string response = ValidateAndFixup(context, quacking_duck, data.prompt);
+    DuckDatabaseInterface dbInterface(context);
+    QuackingDuck quacking_duck(dbInterface);
+    std::string response = quacking_duck.FixupQuery(data.prompt);
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
 }
 
 static string PragmaPromptQuery(ClientContext &context, const FunctionParameters &parameters) {
 	auto prompt = StringValue::Get(parameters.values[0]);
-    QuackingDuck quacking_duck;
-    ExplainSchema(context, quacking_duck);
+    DuckDatabaseInterface dbInterface(context);
+    QuackingDuck quacking_duck(dbInterface);
     std::string query_result = quacking_duck.Ask(prompt);
-    return ValidateAndFixup(context, quacking_duck, query_result);
+    return query_result;
 }
 
  void LoadInternal(DatabaseInstance &db_instance) {
     // create the TPCH pragma that allows us to run the query
 	auto prompt_query_func = PragmaFunction::PragmaCall("prompt_query", PragmaPromptQuery, {LogicalType::VARCHAR});
     ExtensionUtil::RegisterFunction(db_instance, prompt_query_func);
-
 
     TableFunction summarize_func("prompt_schema", {},
         SummarizeSchemaFunction, SummarizeBind);

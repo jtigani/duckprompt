@@ -1,3 +1,4 @@
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -5,9 +6,36 @@
 #include "chat.hpp"
 #include "yyjson.hpp"
 
-QuackingDuck::QuackingDuck() : chat_("") {}
 
-std::string QuackingDuck::Ask(std::string question) {
+std::string QuackingDuck::ExplainSchema() {
+    ExtractedSchema extracted_schema;
+    db_.ExtractSchema(extracted_schema);
+    return ExplainSchemaPrompt(extracted_schema);
+}
+
+std::string QuackingDuck::Ask(std::string prompt) {
+    ExplainSchema();
+    std::string query = AskPrompt(prompt);
+    std::string fixed = FixupQuery(query);
+    return (query == fixed)? query : AskPrompt(prompt);
+}
+
+std::string QuackingDuck::FixupQuery(std::string query) {
+    std::string error = db_.ValidateParse(query);
+    if (error.size() > 0) {
+        AnalyzeQueryPrompt(query);
+        return FixupQueryPrompt(error);
+    }
+    ExplainSchema();
+    error = db_.ValidateSemantics(query);
+    if (error.size() > 0) {
+        AnalyzeQueryPrompt(query);
+        return FixupQueryPrompt(error);
+    }
+    return query;
+}
+
+std::string QuackingDuck::AskPrompt(std::string question) {
     chat_.SetSystemContext("You are a helpful assistant that can generate Postgresql code based on "
         "the user input. You do not respond with any human readable text, only SQL code.");    
     std::string whole_prompt = "Output a single SQL query without any explanation and do "
@@ -21,13 +49,18 @@ std::string QuackingDuck::Ask(std::string question) {
     return query_;
 }
 
-std::string QuackingDuck::ExplainSchema(const ExtractedSchema& extracted_schema) {
-    chat_.Reset("You are a helpful assistant that can generate an human redable summary of database content based on the schema.");
+std::string QuackingDuck::ExplainSchemaPrompt(const ExtractedSchema& extracted_schema) {
+    if (schema_summary_.length() > 0) {
+        return schema_summary_;
+    }
+    chat_.Reset("You are a helpful assistant that can generate an human redable summary "
+            " of database content based on the schema.");
 
     std::string whole_prompt = "SQL schema of my database:\n" 
         + extracted_schema.SchemaToString()
         + "\nExplain in one sentence what the data is about";
-    return chat_.SendPrompt(whole_prompt);
+    schema_summary_ = chat_.SendPrompt(whole_prompt);
+    return schema_summary_;
 }
 
 std::string ExtractedSchema::SchemaToString() const {
@@ -40,7 +73,10 @@ std::string ExtractedSchema::SchemaToString() const {
     return schema;
 }
 
-std::string QuackingDuck::AnalyzeQuery(std::string query) {
+std::string QuackingDuck::AnalyzeQueryPrompt(std::string query) {
+    if (query_.length() > 0) {
+        return query_;
+    }
     chat_.SetSystemContext("You are a helpful assistant that is an expert in SQL code who can output "
            "a human readable summary of a SQL query.");
     std::string whole_prompt = "Here is my SQL query:\n"
@@ -69,7 +105,7 @@ std::string ExtractSelect(std::string message) {
     return result; 
 }
 
-std::string QuackingDuck::FixupQuery(std::string error_message) {
+std::string QuackingDuck::FixupQueryPrompt(std::string error_message) {
     if (query_.length() == 0) {
         // Should have called Ask or AnalyzeQuery to set the query.
         return "";
