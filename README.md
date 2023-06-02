@@ -78,21 +78,21 @@ D select * from prompt_fixup("SEELECT * from customers");
 Also note that if you want to set up sample data with a sales star schema you
 can run the following script
 ```
-build/release/duckdb -init ./scripts/build_sample_db.sql ./build/release/sales.db 
+duckdb -init ./scripts/build_sample_db.sql ./build/release/sales.db 
 ```
 
 Here are some example questions to ask:
 ```
-pragma duck_prompt("Who bought the most PCs, print also the users name?");
-pragma duck_prompt("List only the model number of all products made by maker B.");
-pragma duck_prompt("Return the minimum amount paid by customers who used a visa card (debit or credit) to purchase a product.");
-pragma duck_prompt("Find the customer_id of customers who have the letter 'e' either in their first name or in their last name.");
-pragma duck_prompt("
+pragma prompt_query("Who bought the most PCs, print also the users name?");
+pragma prompt_query("List only the model number of all products made by maker B.");
+pragma prompt_query("Return the minimum amount paid by customers who used a visa card (debit or credit) to purchase a product.");
+pragma prompt_query("Find the customer_id of customers who have the letter 'e' either in their first name or in their last name.");
+pragma prompt_query("
     Assume all prices in the Laptops table are in Euro. List the model numbers of all laptops with ram at least 1024. For each model,
     list also its price in USD. Assume that 1 USD = 0.85 EURO (you need to divide the price by 0.85). Name the price column 'price (USD)'.");
-pragma duck_prompt("Return a list of makers that make more than four different models.");
-pragma duck_prompt("List all first names of customers in an ascending order based on the number of purchases made by customers with that first name.");
-pragma duck_prompt("Show a list of sales per customer, with a running sum of their total spending across all of their sales");
+pragma prompt_query("Return a list of makers that make more than four different models.");
+pragma prompt_query("List all first names of customers in an ascending order based on the number of purchases made by customers with that first name.");
+pragma prompt_query("Show a list of sales per customer, with a running sum of their total spending across all of their sales");
 
 select * from prompt_fixup("SELEECT * from customers");
 select * from prompt_fixup("SELECT * from customer");
