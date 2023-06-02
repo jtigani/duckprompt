@@ -6,8 +6,7 @@ Till Döhmen that he described in his blog post here: https://tdoehmen.github.io
 To summarize, we first call ChatGPT to provide the schema, then we call again to get it generate a SQL query. We then check whether
 the query is valid, and if not, we ask ChatGPT to fix it. 
 
-We also don't
-use samples of the data, only the schema, which makes it harder for chatGPT to answer some questions. But it works surprisingly 
+The context only includes the schema, not data, which makes it harder for chatGPT to answer some questions. But it works surprisingly 
 well with the toy schema I've been working with, even coming up with JOINs and window functions.
 
 There are three basic functions: 
@@ -64,8 +63,25 @@ D select * from prompt_fixup("SEELECT * from customers");
 └─────────────────────────┘
 ```
 
+## Examples
 Also note that if you want to set up sample data with a sales star schema you
 can run the following script
 ```
 build/release/duckdb -init ./scripts/build_sample_db.sql ./build/release/sales.db 
 ```
+
+Here are some example questions to ask:
+```
+pragma duck_prompt("Who bought the most PCs, print also the users name?");
+pragma duck_prompt("List only the model number of all products made by maker B.");
+pragma duck_prompt("Return the minimum amount paid by customers who used a visa card (debit or credit) to purchase a product.");
+pragma duck_prompt("Find the customer_id of customers who have the letter 'e' either in their first name or in their last name.");
+pragma duck_prompt("
+    Assume all prices in the Laptops table are in Euro. List the model numbers of all laptops with ram at least 1024. For each model,
+    list also its price in USD. Assume that 1 USD = 0.85 EURO (you need to divide the price by 0.85). Name the price column 'price (USD)'.");
+pragma duck_prompt("Return a list of makers that make more than four different models.");
+pragma duck_prompt("List all first names of customers in an ascending order based on the number of purchases made by customers with that first name.");
+pragma duck_prompt("Show a list of sales per customer, with a running sum of their total spending across all of their sales");
+
+select * from prompt_fixup("SELEECT * from customers");
+select * from prompt_fixup("SELECT * from customer");
