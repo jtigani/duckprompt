@@ -16,6 +16,17 @@ There are three basic functions:
 
 ---
 
+## Installing the extension
+The binaries for OSX amd64 are built and staged for duckdb 0.8.0 under the s3 location `s3://motherduck-duckdb-extensions/jordan/duckprompt`. 
+They're not signed so you need to run duckdb with the `-unsigned` flag.
+```
+ % duckdb -unsigned
+v0.8.0 e8e4cea5ec
+Enter ".help" for usage hints.
+D SET custom_extension_repository='motherduck-duckdb-extensions.s3.amazonaws.com/jordan/duckprompt/duckprompt/0.0.1';
+D install duckprompt;
+D load duckprompt;
+```
 
 ## Running the extension
 
