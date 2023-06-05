@@ -24,8 +24,7 @@ class ChatContext {
 
 class Chat {
 public:
-    Chat(std::string context);
-    ~Chat();
+    Chat(std::string model) : model_(model.length() > 0 ? model : c_model) { }
 
     void Reset(std::string context);
 
@@ -42,5 +41,6 @@ private:
     static const char* c_chat_uri;
     static const char* c_model;
 
+    std::string model_;
     std::vector<ChatContext> context_;
 };

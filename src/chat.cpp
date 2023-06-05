@@ -10,12 +10,6 @@ const char* Chat::c_open_ai_host = "api.openai.com";
 const char* Chat::c_chat_uri = "v1/chat/completions";
 const char* Chat::c_model = "gpt-3.5-turbo";
 
-Chat::Chat(std::string initial_context) {
-    Reset(initial_context);
-}
-
-Chat::~Chat() {}
-
 std::string GetAuthorizationHeader() {
     char * key = std::getenv("OPENAI_API_KEY");
     if (key == nullptr) {
@@ -135,7 +129,7 @@ std::string Chat::GenerateRequest() {
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
 
-    yyjson_mut_obj_add_str(doc, root, "model", c_model);
+    yyjson_mut_obj_add_str(doc, root, "model", model_.c_str());
 
     yyjson_mut_val* message_arr = yyjson_mut_arr(doc);
 

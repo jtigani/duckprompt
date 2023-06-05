@@ -20,7 +20,7 @@ class DatabaseInterface {
 // Runs natual language to SQL prompting.
 class QuackingDuck {
 public:
-    QuackingDuck(DatabaseInterface& db) : db_(db), chat_("") { }
+    QuackingDuck(DatabaseInterface& db, std::string model = "") : db_(db), chat_(model) { }
 
     // Returns a one sentance summary of a schema.
     std::string ExplainSchema();

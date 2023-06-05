@@ -102,6 +102,9 @@ class DuckDatabaseInterface : public DatabaseInterface {
 struct PromptFunctionData : public TableFunctionData {
     PromptFunctionData() : finished(false) { }
     std::string prompt;
+    std::string model;
+    std::string schema_template;
+    std::string prompt_template;
     bool finished;
 };
 
@@ -113,7 +116,7 @@ static void SummarizeSchemaFunction(ClientContext &context, TableFunctionInput &
     data.finished = true;
 
     DuckDatabaseInterface dbInterface(context);
-    QuackingDuck quacking_duck(dbInterface);
+    QuackingDuck quacking_duck(dbInterface, data.model);
     std::string response = quacking_duck.ExplainSchema();
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
@@ -127,7 +130,7 @@ static void PromptSqlFunction(ClientContext &context, TableFunctionInput &data_p
     data.finished = true;
 
     DuckDatabaseInterface dbInterface(context);
-    QuackingDuck quacking_duck(dbInterface);
+    QuackingDuck quacking_duck(dbInterface, data.model);
     std::string response = quacking_duck.Ask(data.prompt);
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
@@ -148,6 +151,11 @@ static unique_ptr<FunctionData> PromptBind(ClientContext &context, TableFunction
     if (input.inputs.size() > 0) {
       result->prompt = input.inputs[0].template GetValue<std::string>();
     }
+    for (auto &kv : input.named_parameters) {
+        if (kv.first == "model") {
+            result->model = StringValue::Get(kv.second);
+        }
+    }
     return_types.emplace_back(LogicalType::VARCHAR);
     names.emplace_back("query");
     return std::move(result);
@@ -161,7 +169,7 @@ static void FixupFunction(ClientContext &context, TableFunctionInput &data_p, Da
     data.finished = true;
 
     DuckDatabaseInterface dbInterface(context);
-    QuackingDuck quacking_duck(dbInterface);
+    QuackingDuck quacking_duck(dbInterface, data.model);
     std::string response = quacking_duck.FixupQuery(data.prompt);
     output.SetCardinality(1);
     output.SetValue(0, 0, Value(response));
@@ -181,15 +189,15 @@ static string PragmaPromptQuery(ClientContext &context, const FunctionParameters
             {LogicalType::VARCHAR});
     ExtensionUtil::RegisterFunction(db_instance, prompt_query_func);
 
-    TableFunction summarize_func("prompt_schema", {},
-        SummarizeSchemaFunction, SummarizeBind);
+    TableFunction summarize_func("prompt_schema", {}, SummarizeSchemaFunction, SummarizeBind);
     ExtensionUtil::RegisterFunction(db_instance, summarize_func);
 
-    TableFunction prompt_func("prompt_sql", {LogicalType::VARCHAR}, PromptSqlFunction,
-            PromptBind);
+    TableFunction prompt_func("prompt_sql", {LogicalType::VARCHAR}, PromptSqlFunction, PromptBind);
+    prompt_func.named_parameters["model"] = LogicalType::VARCHAR;
     ExtensionUtil::RegisterFunction(db_instance, prompt_func);
 
     TableFunction fixup_func("prompt_fixup", {LogicalType::VARCHAR}, FixupFunction, PromptBind);
+    fixup_func.named_parameters["model"] = LogicalType::VARCHAR;
     ExtensionUtil::RegisterFunction(db_instance, fixup_func);
 }
 
