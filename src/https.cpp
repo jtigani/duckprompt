@@ -1,10 +1,13 @@
 #include <iostream>
 #include <string>
 #include <cstring>
-#define CPPHTTPLIB_OPENSSL_SUPPORT
-#include "httplib.hpp"
+
 #include "https.hpp"
 
+#define CPPHTTPLIB_OPENSSL_SUPPORT
+#include "httplib.hpp"
+
+#include "duckdb/common/exception.hpp"
 
 // Set PROMPT_DEBUG = 1 to see request bodies / responses
 // Set PROMPT_DEBUG = 2 to see headers as well.
@@ -21,7 +24,6 @@ static void logger(const duckdb_httplib_openssl::Request& request, const duckdb_
     if (debug_level <= 0) {
         return;
     }
-
     std::cerr << "Remote Addr: " << request.remote_addr << " Port:" << request.remote_port << "\n";
     std::cerr << "Request:" << request.method << " " << request.path << "\n";
 
@@ -35,14 +37,14 @@ static void logger(const duckdb_httplib_openssl::Request& request, const duckdb_
         }
     }
 
-    std::cerr << "   Body:\n    " << request.body;  
+    std::cerr << "   Body:\n    " << request.body;
     std::cerr << "\n\nResponse Code: " << response.status << "\n";
     if (debug_level > 1) {
         for (auto header : response.headers) {
             std::cerr << "  " << header.first << ": " << header.second << "\n";
         }
     }
-    std::cerr << "   Body:\n    " << response.body;  
+    std::cerr << "   Body:\n    " << response.body;
 }
 
 
@@ -73,21 +75,20 @@ HTTPSResponse HTTPS::Post(
     std::string body) {
 
     if (!client_->is_valid()) {
-        std::cerr << "SSL Client invalid";
-        return HTTPSResponse::InvalidResponse();
+        std::cerr << "SSL Client invalid\n";
+        throw duckdb::IOException("Unable to open SSL path to %s", host_);
     }
     duckdb_httplib_openssl::Headers headers;
     for(auto h : all_headers) {
         headers.emplace(h.first, h.second);
     }
 
-    auto uri = "https://" + host_ + "/" + path; 
+    auto uri = "https://" + host_ + "/" + path;
     auto res = client_->Post(uri.c_str(), headers, body.c_str(), body.size(), "application/json");
 
-    if (res != nullptr) {
-        return HTTPSResponse(res->status, res->body);
-    } else {
-        std::cerr << "Post returned null";
-        return HTTPSResponse::InvalidResponse();
+    if (res == nullptr) {
+        std::cerr << "Post returned null\n";
+        throw duckdb::IOException("No response for HTTP %s to '%s'", "POST", uri);
     }
+    return HTTPSResponse(res->status, res->body);
 }

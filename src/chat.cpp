@@ -67,7 +67,7 @@ std::string join(const std::vector<std::string>& v, char c) {
  "model":"gpt-3.5-turbo-0301","usage":{"prompt_tokens":103,"completion_tokens":94,"total_tokens":197},
  "choices":[{"message":{"role":"assistant",
     "content":"SELECT \n  sum(l_extendedprice * (1 - l_discount)) as revenue \nFROM \n  lineitem \nWHERE \n
-          l_shipdate >= date '1994-01-01'\n  AND l_shipdate < date '1994-01-01' + interval '1' year \n 
+          l_shipdate >= date '1994-01-01'\n  AND l_shipdate < date '1994-01-01' + interval '1' year \n
           AND l_discount between 0.06 - 0.01 AND 0.06 + 0.01 \n  AND l_quantity < 24;"},
     "finish_reason":"stop","index":0}]}
 */
@@ -79,31 +79,36 @@ std::string ParseResponse(std::string response) {
         yyjson_val *root_json = yyjson_doc_get_root(doc);
         if (root_json == nullptr) {
             std::cerr << "Unable to read the root of the response";
-            break;
+            throw duckdb::IOException("Invalid Chat Response: missing root");
         }
         yyjson_val *choices_json = yyjson_obj_get(root_json, "choices");
         if (choices_json == nullptr) {
             std::cerr << "Unable to choices object from the root";
+            throw duckdb::IOException("Invalid Chat Response: missing 'choices''");
             break;
         }
         size_t idx, max;
         yyjson_val *choice_json;
-        
+
         yyjson_arr_foreach(choices_json, idx, max, choice_json) {
             yyjson_val* message_json = yyjson_obj_get(choice_json, "message");
             if (message_json == nullptr) {
                 std::cerr << "Unable to read the message object from the choice";
-                break;
+                throw duckdb::IOException("Invalid Chat Response: missing 'message''");
             }
+
             yyjson_val* content_json = yyjson_obj_get(message_json, "content");
             if (message_json == nullptr) {
                 std::cerr << "Unable to read the content object from the message";
-                break;
+                throw duckdb::IOException("Invalid Chat Response: missing 'content''");
             }
-            content = yyjson_get_str(content_json); 
+            content = yyjson_get_str(content_json);
             break;
         }
     } while(false);
+    if (content.size() == 0) {
+        throw duckdb::IOException("Invalid Chat Response: empty content");
+    }
     yyjson_doc_free(doc);
     return content;
 }
@@ -120,7 +125,7 @@ std::string Chat::GenerateMessages() {
 
 /*
 Example:
-{"model": "gpt-3.5-turbo", 
+{"model": "gpt-3.5-turbo",
     "messages":[{"role": "system", "content":"Prompt goes here"}]}
 */
 std::string Chat::GenerateRequest() {
@@ -128,14 +133,13 @@ std::string Chat::GenerateRequest() {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
-
     yyjson_mut_obj_add_str(doc, root, "model", model_.c_str());
 
     yyjson_mut_val* message_arr = yyjson_mut_arr(doc);
 
 
     // Create objects and add them to the array
-    
+
     for (auto single_context : context_) {
         yyjson_mut_val *obj = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_strcpy(doc, obj, "role", single_context.role.c_str());
@@ -154,6 +158,7 @@ std::string Chat::GenerateRequest() {
         free((void *)json);
     } else {
         std::cerr << "Invalid json generated";
+        throw duckdb::InternalException("Error generating json message");
     }
 
     // Free the doc
@@ -162,7 +167,7 @@ std::string Chat::GenerateRequest() {
 }
 
 std::string Chat::SendPrompt(std::string prompt) {
-    HTTPS https(c_open_ai_host);    
+    HTTPS https(c_open_ai_host);
     std::string question = prompt;
     std::vector<std::pair<std::string, std::string> > headers;
     std::string auth_header = GetAuthorizationHeader();
@@ -173,16 +178,17 @@ std::string Chat::SendPrompt(std::string prompt) {
     }
 
     context_.push_back(ChatContext("user", prompt));
-    std::string body = GenerateRequest(); 
-    
+    std::string body = GenerateRequest();
+
     HTTPSResponse response = https.Post(c_chat_uri, headers, body);
     if (response.code != 200) {
-        return "";
-    } else {
-        std::string result = ParseResponse(response.response);
-        if (result.size() > 0) {
-            context_.push_back(ChatContext("assistant", result));
-        }
-        return result;
+        throw duckdb::IOException("HTTP Request returned HTTP %d for %s to '%s'", response.code, "POST", c_chat_uri);
     }
+
+    std::string result = ParseResponse(response.response);
+    if (result.size() > 0) {
+        context_.push_back(ChatContext("assistant", result));
+    }
+    return result;
+
 }
